@@ -1,0 +1,35 @@
+# Reference material is deliberately outside this product's history.
+/reference/
+
+# Local configuration and secrets
+.env
+.env.local
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+coverage/
+npm-debug.log*
+
+# Private financial data
+/storage/
+/uploads/
+*.local.pdf
+*.local.csv
+*.local.xls*
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
