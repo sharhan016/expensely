@@ -234,6 +234,8 @@ lookups were verified as owner-scoped. The complete quality gate passes with 26 
 including 13 new ownership-policy/API tests, plus the existing frontend, migration, build, and
 Chromium checks. Outstanding: the PostgreSQL default-employer uniqueness migration,
 concurrency integration test, and owned-association Playwright path require migration approval.
+The read-only production-data preflight found zero users with more than one default employer,
+so the proposed unique-index migration currently has no known data conflict.
 
 #### Slice 1.2: Separate immutable movement from editable meaning
 
