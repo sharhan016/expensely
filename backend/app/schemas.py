@@ -78,15 +78,29 @@ class TransactionResponse(ORMModel):
     employer_id: int | None
     trip_id: int | None
     notes: str
+    meaning_version: int = 1
     created_at: datetime
 
 
 class TransactionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     purpose: Purpose | None = None
     person_id: int | None = None
     employer_id: int | None = None
     trip_id: int | None = None
     notes: str | None = None
+    expected_version: int | None = Field(default=None, ge=1)
+    reason: str = Field(default="", max_length=500)
+
+
+class TransactionMeaningChangeResponse(ORMModel):
+    id: int
+    version: int
+    before_values: dict[str, str | int | None]
+    after_values: dict[str, str | int | None]
+    reason: str
+    created_at: datetime
 
 
 class ImportRowResponse(ORMModel):

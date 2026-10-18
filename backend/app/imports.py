@@ -17,6 +17,7 @@ from app.models import (
     Reconciliation,
     StatementImport,
     Transaction,
+    TransactionMeaning,
     User,
 )
 from app.ownership import validate_financial_associations
@@ -385,23 +386,31 @@ def confirm_import(
         ):
             skipped += 1
             continue
-        db.add(
-            Transaction(
-                user_id=user.id,
-                account_id=account.id,
-                statement_import_id=statement.id,
-                txn_date=row.txn_date,
-                description=row.description,
-                amount=row.amount,
-                bank_balance=row.balance,
-                reference=row.reference,
-                dedupe_hash=fingerprint,
-                purpose=row.purpose,
-                person_id=associations.person_id,
-                employer_id=associations.employer_id,
-                trip_id=associations.trip_id,
-            )
+        movement = Transaction(
+            user_id=user.id,
+            account_id=account.id,
+            statement_import_id=statement.id,
+            txn_date=row.txn_date,
+            description=row.description,
+            amount=row.amount,
+            bank_balance=row.balance,
+            reference=row.reference,
+            dedupe_hash=fingerprint,
+            purpose=row.purpose,
+            person_id=associations.person_id,
+            employer_id=associations.employer_id,
+            trip_id=associations.trip_id,
         )
+        movement.meaning = TransactionMeaning(
+            user_id=user.id,
+            purpose=row.purpose,
+            person_id=associations.person_id,
+            employer_id=associations.employer_id,
+            trip_id=associations.trip_id,
+            version=1,
+            review_status="current",
+        )
+        db.add(movement)
         imported += 1
     statement.account_id = account.id
     statement.status = ImportStatus.CONFIRMED

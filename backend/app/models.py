@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Date,
     DateTime,
@@ -21,6 +22,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class Purpose(enum.StrEnum):
@@ -46,9 +51,9 @@ class ImportStatus(enum.StrEnum):
 
 
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
 
@@ -208,6 +213,44 @@ class Transaction(TimestampMixin, Base):
     )
     notes: Mapped[str] = mapped_column(Text, default="")
     account: Mapped[Account] = relationship(back_populates="transactions")
+    meaning: Mapped[TransactionMeaning | None] = relationship(
+        back_populates="transaction", cascade="all, delete-orphan", uselist=False
+    )
+
+    @property
+    def meaning_version(self) -> int:
+        return self.meaning.version if self.meaning else 1
+
+
+class TransactionMeaning(TimestampMixin, Base):
+    __tablename__ = "transaction_meanings"
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    purpose: Mapped[Purpose] = mapped_column(Enum(Purpose), default=Purpose.OTHER)
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id"), nullable=True)
+    employer_id: Mapped[int | None] = mapped_column(ForeignKey("employers.id"), nullable=True)
+    trip_id: Mapped[int | None] = mapped_column(ForeignKey("trips.id"), nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    version: Mapped[int] = mapped_column(default=1)
+    review_status: Mapped[str] = mapped_column(String(20), default="current")
+    transaction: Mapped[Transaction] = relationship(back_populates="meaning")
+
+
+class TransactionMeaningChange(Base):
+    __tablename__ = "transaction_meaning_changes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    actor_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    version: Mapped[int]
+    before_values: Mapped[dict] = mapped_column(JSON)
+    after_values: Mapped[dict] = mapped_column(JSON)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class Reconciliation(TimestampMixin, Base):
@@ -221,6 +264,8 @@ class Reconciliation(TimestampMixin, Base):
     opening_balance: Mapped[Decimal] = mapped_column(Numeric(16, 2))
     statement_closing_balance: Mapped[Decimal] = mapped_column(Numeric(16, 2))
     status: Mapped[str] = mapped_column(String(20), default="draft")
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    classification_status: Mapped[str] = mapped_column(String(20), default="current")
 
 
 class ClassificationRule(TimestampMixin, Base):

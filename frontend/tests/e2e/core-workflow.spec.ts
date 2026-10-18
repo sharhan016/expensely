@@ -47,6 +47,13 @@ test("register, import a statement, and open the ledger", async ({ page }) => {
   await expect(page.getByLabel("Related person for UPI WATER").locator("option:checked")).toHaveText(
     "Alex Morgan",
   );
+  await page
+    .getByRole("row")
+    .filter({ hasText: "UPI WATER" })
+    .getByRole("button", { name: "View history" })
+    .click();
+  await expect(page.getByText("Meaning history")).toBeVisible();
+  await expect(page.getByText(/other → loan given/i)).toBeVisible();
 
   await page.getByRole("link", { name: "People & Funds" }).click();
   await page.getByRole("button", { name: /Alex Morgan/ }).click();

@@ -278,6 +278,22 @@ Definition of done:
 
 - Financial equivalence is proven; rollback is rehearsed; no editable path can alter imported evidence.
 
+**Status: Complete — 18 October 2026.** The existing `transactions` table now serves as the
+immutable movement compatibility store and each movement has one authoritative
+`transaction_meanings` record. Imports create both atomically; meaning edits use optimistic
+versions, dual-write legacy fields for rollback, and append actor/timestamp/before/after/reason
+history. Finalized-period corrections require a reason, mark classification review as needing
+review, and leave the bank-balance reconciliation status unchanged. Ordinary transaction APIs
+reject imported-field edits, owner-check history, and read meaning values from the new table.
+Trip decisions use the same audited change service. Revision `f2d8a6b1947c` uses
+expand/backfill/verify semantics and keeps all legacy columns; its downgrade drops only new
+structures. PostgreSQL fixtures proved two legacy movements retained count `2` and account sum
+`74.50` across downgrade/backfill, while the local movement fingerprint was unchanged and
+meaning parity had zero mismatches after applying the revision. `make verify` passed 31 ordinary
+Pytest tests with two environment-gated skips, two PostgreSQL integration tests, one Vitest
+test, lint/type checks, migration rollback/re-upgrade, production build, and Chromium import →
+classify → inspect-history → person-detail coverage.
+
 ### Phase 2 — Reliable statement-to-ledger workflow
 
 #### Slice 2.1: Recoverable file lifecycle and import states

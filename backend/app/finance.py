@@ -5,6 +5,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.meanings import apply_meaning_change, ensure_meaning
 from app.models import (
     Account,
     ClassificationRule,
@@ -248,19 +249,29 @@ def decide_trip_transaction(
         )
     )
     if payload.status == "included":
-        transaction.trip_id = trip.id
+        trip_id = trip.id
         if exclusion:
             db.delete(exclusion)
     elif payload.status == "excluded":
-        if transaction.trip_id == trip.id:
-            transaction.trip_id = None
+        trip_id = None
         if not exclusion:
             db.add(TripTransactionExclusion(trip_id=trip.id, transaction_id=transaction.id))
     else:
-        if transaction.trip_id == trip.id:
-            transaction.trip_id = None
+        trip_id = None
         if exclusion:
             db.delete(exclusion)
+    meaning = ensure_meaning(db, transaction)
+    apply_meaning_change(
+        db,
+        transaction=transaction,
+        actor_user_id=user.id,
+        purpose=meaning.purpose,
+        person_id=meaning.person_id,
+        employer_id=meaning.employer_id,
+        trip_id=trip_id,
+        notes=meaning.notes,
+        reason=f"Trip review: {payload.status}",
+    )
     db.commit()
     return {"status": payload.status}
 

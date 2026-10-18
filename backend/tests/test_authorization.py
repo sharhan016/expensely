@@ -328,3 +328,39 @@ def test_replacing_default_employer_keeps_one_default(api_context):
         if employer.is_default
     ]
     assert [employer.name for employer in defaults] == ["New default employer"]
+
+
+def test_transaction_api_rejects_bank_evidence_and_stale_meaning_edits(api_context):
+    context = api_context
+    transaction = context["transaction"]
+    immutable = context["client"].patch(
+        f"/transactions/{transaction.id}",
+        json={"amount": "999.00", "description": "CHANGED"},
+    )
+    assert immutable.status_code == 422
+    context["db"].refresh(transaction)
+    assert transaction.amount == Decimal("-10.00")
+    assert transaction.description == "OWNER TRANSACTION"
+
+    first = context["client"].patch(
+        f"/transactions/{transaction.id}",
+        json={"purpose": "personal", "expected_version": 1},
+    )
+    stale = context["client"].patch(
+        f"/transactions/{transaction.id}",
+        json={"purpose": "income", "expected_version": 1},
+    )
+    assert first.status_code == 200
+    assert first.json()["meaning_version"] == 2
+    assert stale.status_code == 409
+
+    history = context["client"].get(f"/transactions/{transaction.id}/history")
+    assert history.status_code == 200
+    assert history.json()[0]["before_values"]["purpose"] == "other"
+    assert history.json()[0]["after_values"]["purpose"] == "personal"
+
+
+def test_transaction_history_does_not_reveal_foreign_transaction(api_context):
+    context = api_context
+    response = context["client"].get(f"/transactions/{context['stranger_transaction'].id}/history")
+    assert response.status_code == 404

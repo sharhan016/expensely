@@ -2,13 +2,21 @@ from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.database import get_db
 from app.finance import router as finance_router
 from app.imports import router as imports_router
-from app.models import Account, Employer, Person, Reconciliation, Transaction, User
+from app.meanings import apply_meaning_change, ensure_meaning
+from app.models import (
+    Account,
+    Employer,
+    Person,
+    Transaction,
+    TransactionMeaningChange,
+    User,
+)
 from app.ownership import validate_financial_associations
 from app.schemas import (
     AccountResponse,
@@ -19,6 +27,7 @@ from app.schemas import (
     PersonResponse,
     RegisterRequest,
     ThemeUpdate,
+    TransactionMeaningChangeResponse,
     TransactionResponse,
     TransactionUpdate,
     UserResponse,
@@ -36,6 +45,22 @@ app.add_middleware(
 )
 app.include_router(imports_router)
 app.include_router(finance_router)
+
+
+def _transaction_response(transaction: Transaction) -> TransactionResponse:
+    response = TransactionResponse.model_validate(transaction)
+    if not transaction.meaning:
+        return response
+    return response.model_copy(
+        update={
+            "purpose": transaction.meaning.purpose,
+            "person_id": transaction.meaning.person_id,
+            "employer_id": transaction.meaning.employer_id,
+            "trip_id": transaction.meaning.trip_id,
+            "notes": transaction.meaning.notes,
+            "meaning_version": transaction.meaning.version,
+        }
+    )
 
 
 @app.get("/health")
@@ -115,12 +140,14 @@ def accounts(db: Session = Depends(get_db), user: User = Depends(current_user)):
 
 @app.get("/transactions", response_model=list[TransactionResponse])
 def transactions(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return db.scalars(
+    rows = db.scalars(
         select(Transaction)
+        .options(selectinload(Transaction.meaning))
         .where(Transaction.user_id == user.id)
         .order_by(Transaction.txn_date.desc(), Transaction.id.desc())
         .limit(500)
     ).all()
+    return [_transaction_response(transaction) for transaction in rows]
 
 
 @app.patch("/transactions/{transaction_id}", response_model=TransactionResponse)
@@ -131,39 +158,64 @@ def update_transaction(
     user: User = Depends(current_user),
 ):
     transaction = db.scalar(
-        select(Transaction).where(Transaction.id == transaction_id, Transaction.user_id == user.id)
+        select(Transaction)
+        .options(selectinload(Transaction.meaning))
+        .where(Transaction.id == transaction_id, Transaction.user_id == user.id)
     )
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    changes = payload.model_dump(exclude_unset=True)
-    purpose = changes.get("purpose", transaction.purpose)
+    meaning = ensure_meaning(db, transaction)
+    changes = payload.model_dump(exclude={"expected_version", "reason"}, exclude_unset=True)
+    purpose = changes.get("purpose", meaning.purpose)
     associations = validate_financial_associations(
         db,
         user_id=user.id,
         purpose=purpose,
-        person_id=changes.get("person_id", transaction.person_id),
-        employer_id=changes.get("employer_id", transaction.employer_id),
-        trip_id=changes.get("trip_id", transaction.trip_id),
+        person_id=changes.get("person_id", meaning.person_id),
+        employer_id=changes.get("employer_id", meaning.employer_id),
+        trip_id=changes.get("trip_id", meaning.trip_id),
     )
-    changes.update(
+    apply_meaning_change(
+        db,
+        transaction=transaction,
+        actor_user_id=user.id,
+        purpose=purpose,
         person_id=associations.person_id,
         employer_id=associations.employer_id,
         trip_id=associations.trip_id,
+        notes=changes.get("notes", meaning.notes),
+        expected_version=payload.expected_version,
+        reason=payload.reason,
     )
-    for field, value in changes.items():
-        setattr(transaction, field, value)
-    for reconciliation in db.scalars(
-        select(Reconciliation).where(
-            Reconciliation.user_id == user.id,
-            Reconciliation.account_id == transaction.account_id,
-            Reconciliation.period_start <= transaction.txn_date,
-            Reconciliation.period_end >= transaction.txn_date,
-        )
-    ):
-        reconciliation.status = "invalidated"
     db.commit()
     db.refresh(transaction)
-    return transaction
+    return _transaction_response(transaction)
+
+
+@app.get(
+    "/transactions/{transaction_id}/history",
+    response_model=list[TransactionMeaningChangeResponse],
+)
+def transaction_history(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    transaction = db.scalar(
+        select(Transaction.id).where(
+            Transaction.id == transaction_id, Transaction.user_id == user.id
+        )
+    )
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return db.scalars(
+        select(TransactionMeaningChange)
+        .where(
+            TransactionMeaningChange.transaction_id == transaction_id,
+            TransactionMeaningChange.user_id == user.id,
+        )
+        .order_by(TransactionMeaningChange.version.desc())
+    ).all()
 
 
 @app.get("/people", response_model=list[PersonResponse])
