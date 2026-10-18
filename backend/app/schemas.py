@@ -45,6 +45,11 @@ class AccountResponse(ORMModel):
     statement_count: int = 0
 
 
+class AccountUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    bank_slug: str = Field(min_length=2, max_length=40, pattern=r"^[a-z0-9_-]+$")
+
+
 class PersonCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     relationship_label: str = Field(default="", max_length=80)
@@ -158,6 +163,9 @@ class ImportBulkUpdate(BaseModel):
 class ImportConfirmRequest(BaseModel):
     account_id: int | None = None
     account_name: str | None = Field(default=None, max_length=120)
+    bank_slug: str | None = Field(
+        default=None, min_length=2, max_length=40, pattern=r"^[a-z0-9_-]+$"
+    )
 
 
 class ImportConfirmResponse(BaseModel):

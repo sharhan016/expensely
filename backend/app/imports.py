@@ -356,20 +356,28 @@ def confirm_import(
             .order_by(Account.id)
         )
     if account is None:
+        bank_slug = statement.bank_slug
+        if bank_slug == "unknown":
+            bank_slug = payload.bank_slug or ""
+            if not bank_slug or bank_slug == "unknown":
+                raise HTTPException(
+                    status_code=422,
+                    detail="Choose the bank before creating this account",
+                )
+        account_name = (payload.account_name or statement.detected_account_name or "").strip()
+        if not account_name:
+            raise HTTPException(status_code=422, detail="Enter an account name")
         account = Account(
             user_id=user.id,
-            name=(
-                payload.account_name
-                or statement.detected_account_name
-                or f"{statement.bank_slug.title()} account"
-            ),
-            bank_slug=statement.bank_slug,
+            name=account_name,
+            bank_slug=bank_slug,
             account_hint=statement.account_hint or uuid.uuid4().hex[:8],
             kind=statement.statement_kind,
             opening_balance=statement.opening_balance or 0,
         )
         db.add(account)
         db.flush()
+        statement.bank_slug = bank_slug
     imported = skipped = 0
     for row in statement.rows:
         if not row.selected:

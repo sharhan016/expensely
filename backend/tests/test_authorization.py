@@ -272,6 +272,63 @@ def test_import_confirmation_revalidates_row_and_account_ownership(api_context):
     assert context["statement"].status == ImportStatus.READY
 
 
+def test_unknown_bank_cannot_be_silently_created(api_context):
+    context = api_context
+    context["statement"].bank_slug = "unknown"
+    context["statement"].detected_account_name = ""
+    context["db"].commit()
+
+    response = context["client"].post(
+        f"/imports/{context['statement'].id}/confirm",
+        json={"account_name": "Daily account"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Choose the bank before creating this account"
+    assert context["statement"].status == ImportStatus.READY
+
+
+def test_unknown_bank_can_be_confirmed_after_explicit_identification(api_context):
+    context = api_context
+    context["statement"].bank_slug = "unknown"
+    context["statement"].detected_account_name = ""
+    context["db"].commit()
+
+    response = context["client"].post(
+        f"/imports/{context['statement'].id}/confirm",
+        json={"account_name": "Daily account", "bank_slug": "yes"},
+    )
+
+    assert response.status_code == 200
+    created = context["db"].get(Account, response.json()["account_id"])
+    assert created is not None
+    assert created.bank_slug == "yes"
+    assert created.name == "Daily account"
+    context["db"].refresh(context["statement"])
+    assert context["statement"].bank_slug == "yes"
+
+
+def test_account_correction_is_owned(api_context):
+    context = api_context
+    context["statement"].account_id = context["owner_account"].id
+    context["statement"].bank_slug = "unknown"
+    context["db"].commit()
+    corrected = context["client"].patch(
+        f"/accounts/{context['owner_account'].id}",
+        json={"name": "YES savings", "bank_slug": "yes"},
+    )
+    foreign = context["client"].patch(
+        f"/accounts/{context['stranger_account'].id}",
+        json={"name": "Not allowed", "bank_slug": "yes"},
+    )
+
+    assert corrected.status_code == 200
+    assert corrected.json()["bank_slug"] == "yes"
+    context["db"].refresh(context["statement"])
+    assert context["statement"].bank_slug == "yes"
+    assert foreign.status_code == 404
+
+
 def test_required_associations_and_default_employer_policy(api_context):
     context = api_context
     db = context["db"]

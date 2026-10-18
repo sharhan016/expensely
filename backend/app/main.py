@@ -13,6 +13,7 @@ from app.models import (
     Account,
     Employer,
     Person,
+    StatementImport,
     Transaction,
     TransactionMeaningChange,
     User,
@@ -20,6 +21,7 @@ from app.models import (
 from app.ownership import validate_financial_associations
 from app.schemas import (
     AccountResponse,
+    AccountUpdate,
     EmployerCreate,
     EmployerResponse,
     LoginRequest,
@@ -136,6 +138,47 @@ def accounts(db: Session = Depends(get_db), user: User = Depends(current_user)):
         )
         for account, balance, statement_count in rows
     ]
+
+
+@app.patch("/accounts/{account_id}", response_model=AccountResponse)
+def update_account(
+    account_id: int,
+    payload: AccountUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    account = db.scalar(select(Account).where(Account.id == account_id, Account.user_id == user.id))
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    account.name = payload.name.strip()
+    account.bank_slug = payload.bank_slug
+    for statement in db.scalars(
+        select(StatementImport).where(
+            StatementImport.account_id == account.id,
+            StatementImport.user_id == user.id,
+            StatementImport.bank_slug == "unknown",
+        )
+    ):
+        statement.bank_slug = payload.bank_slug
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409, detail="An account with this bank and identity already exists"
+        ) from exc
+    balance, statement_count = db.execute(
+        select(
+            (Account.opening_balance + func.coalesce(func.sum(Transaction.amount), 0)),
+            func.count(func.distinct(Transaction.statement_import_id)),
+        )
+        .outerjoin(Transaction, Transaction.account_id == Account.id)
+        .where(Account.id == account.id)
+        .group_by(Account.id)
+    ).one()
+    return AccountResponse.model_validate(account).model_copy(
+        update={"current_balance": balance, "statement_count": statement_count}
+    )
 
 
 @app.get("/transactions", response_model=list[TransactionResponse])
