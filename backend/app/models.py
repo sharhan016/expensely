@@ -154,6 +154,18 @@ class Trip(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(140))
     starts_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     ends_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    purchase_window_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    purchase_window_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class TripTransactionExclusion(TimestampMixin, Base):
+    __tablename__ = "trip_transaction_exclusions"
+    __table_args__ = (UniqueConstraint("trip_id", "transaction_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), index=True)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), index=True
+    )
 
 
 class Transaction(TimestampMixin, Base):

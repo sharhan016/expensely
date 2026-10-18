@@ -16,9 +16,16 @@ from app.models import (
     StatementImport,
     Transaction,
     Trip,
+    TripTransactionExclusion,
     User,
 )
-from app.schemas import ReconciliationCreate, RuleCreate, RuleUpdate, TripCreate
+from app.schemas import (
+    ReconciliationCreate,
+    RuleCreate,
+    RuleUpdate,
+    TripCreate,
+    TripTransactionDecision,
+)
 from app.security import current_user
 from app.services import calculate_reconciliation, person_balances
 
@@ -132,11 +139,114 @@ def trips(db: Session = Depends(get_db), user: User = Depends(current_user)):
 def create_trip(
     payload: TripCreate, db: Session = Depends(get_db), user: User = Depends(current_user)
 ):
-    trip = Trip(user_id=user.id, **payload.model_dump())
+    if not payload.starts_on or not payload.ends_on:
+        raise HTTPException(status_code=422, detail="Travel start and end dates are required")
+    if payload.starts_on > payload.ends_on:
+        raise HTTPException(status_code=422, detail="Travel end must be after the start")
+    window_start = payload.purchase_window_start or payload.starts_on
+    window_end = payload.purchase_window_end or payload.ends_on
+    if window_start > payload.starts_on or window_end < payload.ends_on:
+        raise HTTPException(
+            status_code=422, detail="The purchase window must include the travel dates"
+        )
+    trip = Trip(
+        user_id=user.id,
+        name=payload.name,
+        starts_on=payload.starts_on,
+        ends_on=payload.ends_on,
+        purchase_window_start=window_start,
+        purchase_window_end=window_end,
+    )
     db.add(trip)
     db.commit()
     db.refresh(trip)
     return trip
+
+
+@router.get("/trips/{trip_id}")
+def trip_detail(
+    trip_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
+    trip = db.scalar(select(Trip).where(Trip.id == trip_id, Trip.user_id == user.id))
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+    window_start = trip.purchase_window_start or trip.starts_on
+    window_end = trip.purchase_window_end or trip.ends_on
+    transaction_query = (
+        select(Transaction, Account.name)
+        .join(Account, Account.id == Transaction.account_id)
+        .where(Transaction.user_id == user.id)
+        .order_by(Transaction.txn_date, Transaction.id)
+    )
+    if window_start:
+        transaction_query = transaction_query.where(Transaction.txn_date >= window_start)
+    if window_end:
+        transaction_query = transaction_query.where(Transaction.txn_date <= window_end)
+    rows = db.execute(transaction_query).all()
+    excluded_ids = set(
+        db.scalars(
+            select(TripTransactionExclusion.transaction_id).where(
+                TripTransactionExclusion.trip_id == trip.id
+            )
+        ).all()
+    )
+    candidates = []
+    for transaction, account_name in rows:
+        status = (
+            "included"
+            if transaction.trip_id == trip.id
+            else "excluded"
+            if transaction.id in excluded_ids
+            else "unavailable"
+            if transaction.trip_id is not None
+            else "pending"
+        )
+        candidates.append(
+            {"transaction": transaction, "account_name": account_name, "status": status}
+        )
+    return {"trip": trip, "candidates": candidates}
+
+
+@router.patch("/trips/{trip_id}/transactions/{transaction_id}")
+def decide_trip_transaction(
+    trip_id: int,
+    transaction_id: int,
+    payload: TripTransactionDecision,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    trip = db.scalar(select(Trip).where(Trip.id == trip_id, Trip.user_id == user.id))
+    transaction = db.scalar(
+        select(Transaction).where(
+            Transaction.id == transaction_id, Transaction.user_id == user.id
+        )
+    )
+    if not trip or not transaction:
+        raise HTTPException(status_code=404, detail="Trip or transaction not found")
+    if transaction.trip_id not in (None, trip.id):
+        raise HTTPException(status_code=409, detail="Transaction belongs to another trip")
+    exclusion = db.scalar(
+        select(TripTransactionExclusion).where(
+            TripTransactionExclusion.trip_id == trip.id,
+            TripTransactionExclusion.transaction_id == transaction.id,
+        )
+    )
+    if payload.status == "included":
+        transaction.trip_id = trip.id
+        if exclusion:
+            db.delete(exclusion)
+    elif payload.status == "excluded":
+        if transaction.trip_id == trip.id:
+            transaction.trip_id = None
+        if not exclusion:
+            db.add(TripTransactionExclusion(trip_id=trip.id, transaction_id=transaction.id))
+    else:
+        if transaction.trip_id == trip.id:
+            transaction.trip_id = None
+        if exclusion:
+            db.delete(exclusion)
+    db.commit()
+    return {"status": payload.status}
 
 
 @router.get("/rules")

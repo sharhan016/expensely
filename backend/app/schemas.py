@@ -160,6 +160,12 @@ class TripCreate(BaseModel):
     name: str = Field(min_length=1, max_length=140)
     starts_on: date | None = None
     ends_on: date | None = None
+    purchase_window_start: date | None = None
+    purchase_window_end: date | None = None
+
+
+class TripTransactionDecision(BaseModel):
+    status: str = Field(pattern="^(included|excluded|pending)$")
 
 
 class RuleCreate(BaseModel):
