@@ -31,7 +31,7 @@ from app.schemas import (
     StatementImportResponse,
 )
 from app.security import current_user
-from app.services import calculate_reconciliation, dedupe_hash
+from app.services import calculate_reconciliation, dedupe_hash, suggest_from_history
 
 router = APIRouter(prefix="/imports", tags=["statement imports"])
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".txt"}
@@ -56,12 +56,48 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
     statement.period_end = parsed.period_end
     statement.opening_balance = parsed.opening_balance
     statement.closing_balance = parsed.closing_balance
+    if parsed.source_hint:
+        statement.account_id = db.scalar(
+            select(Account.id).where(
+                Account.user_id == user_id,
+                Account.bank_slug == parsed.bank_slug,
+                Account.account_hint == parsed.source_hint,
+            )
+        )
+    if parsed.period_start and parsed.period_end and (statement.account_id or parsed.source_hint):
+        identity = (
+            StatementImport.account_id == statement.account_id
+            if statement.account_id
+            else (
+                (StatementImport.bank_slug == parsed.bank_slug)
+                & (StatementImport.account_hint == parsed.source_hint)
+            )
+        )
+        statement.overlap_warning = (
+            db.scalar(
+                select(StatementImport.id).where(
+                    StatementImport.user_id == user_id,
+                    StatementImport.id != statement.id,
+                    StatementImport.period_start <= parsed.period_end,
+                    StatementImport.period_end >= parsed.period_start,
+                    identity,
+                )
+            )
+            is not None
+        )
     rules = db.scalars(
         select(ClassificationRule).where(
             ClassificationRule.user_id == user_id,
             ClassificationRule.is_active.is_(True),
         )
     ).all()
+    history = list(
+        db.execute(
+            select(Transaction.description, Transaction.purpose).where(
+                Transaction.user_id == user_id, Transaction.purpose != Purpose.OTHER
+            )
+        ).all()
+    )
     statement.rows.clear()
     for transaction in parsed.transactions:
         duplicate = db.scalar(
@@ -82,6 +118,9 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
             ),
             None,
         )
+        suggested_purpose, suggestion_confidence = suggest_from_history(
+            transaction.description, history
+        )
         statement.rows.append(
             ImportRow(
                 txn_date=transaction.txn_date,
@@ -91,10 +130,12 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
                 reference=transaction.reference,
                 duplicate_of_id=duplicate,
                 selected=duplicate is None,
-                purpose=matched_rule.purpose if matched_rule else Purpose.OTHER,
+                purpose=(
+                    matched_rule.purpose if matched_rule else suggested_purpose or Purpose.OTHER
+                ),
                 person_id=matched_rule.person_id if matched_rule else None,
                 employer_id=matched_rule.employer_id if matched_rule else None,
-                confidence="confident" if matched_rule else "unresolved",
+                confidence="confident" if matched_rule else suggestion_confidence,
             )
         )
     statement.status = ImportStatus.READY
@@ -122,6 +163,10 @@ def upload_statements(
         content = upload.file.read(settings.max_upload_bytes + 1)
         if len(content) > settings.max_upload_bytes:
             raise HTTPException(status_code=413, detail=f"{filename}: file is too large")
+        if suffix == ".pdf" and not content.startswith(b"%PDF-"):
+            raise HTTPException(status_code=415, detail=f"{filename}: not a valid PDF file")
+        if suffix in {".csv", ".txt"} and b"\x00" in content[:4096]:
+            raise HTTPException(status_code=415, detail=f"{filename}: not a text statement")
         storage_key = f"{user.id}/{uuid.uuid4().hex}{suffix}"
         destination = settings.upload_dir / storage_key
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -254,6 +299,18 @@ def confirm_import(
         )
         if not account:
             raise HTTPException(status_code=404, detail="Account not found")
+    elif statement.account_id:
+        account = db.scalar(
+            select(Account).where(Account.id == statement.account_id, Account.user_id == user.id)
+        )
+    elif statement.account_hint:
+        account = db.scalar(
+            select(Account).where(
+                Account.user_id == user.id,
+                Account.bank_slug == statement.bank_slug,
+                Account.account_hint == statement.account_hint,
+            )
+        )
     if account is None:
         account = Account(
             user_id=user.id,

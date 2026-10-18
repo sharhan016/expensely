@@ -6,6 +6,8 @@ import "./globals.css";
 import "./workspace.css";
 import "./finance.css";
 import "./password.css";
+import "./account-binding.css";
+import "./management.css";
 
 export const metadata = {
   title: "Expense Analyzer",

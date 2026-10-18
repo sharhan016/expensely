@@ -1,4 +1,4 @@
-.PHONY: setup dev dev-backend dev-frontend db-up db-down migrate test lint build
+.PHONY: setup dev dev-backend dev-frontend db-up db-down migrate seed test lint build
 
 setup:
 	cd backend && uv sync
@@ -13,6 +13,9 @@ db-down:
 
 migrate:
 	cd backend && uv run alembic upgrade head
+
+seed:
+	cd backend && uv run python scripts/seed_demo.py --email "$${DEMO_EMAIL}"
 
 dev-backend:
 	cd backend && uv run uvicorn app.main:app --reload --port 8000

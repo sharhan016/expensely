@@ -4,6 +4,7 @@ import { useEffect,useMemo,useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { WorkspaceState } from "@/components/WorkspaceState";
 import { api,inr } from "@/lib/api";
+import { runningBalances } from "@/lib/ledger";
 
 type Tx={id:number;account_id:number;txn_date:string;description:string;amount:string;purpose:string;person_id:number|null;employer_id:number|null;trip_id:number|null};
 type Account={id:number;name:string;opening_balance:string};
@@ -14,7 +15,7 @@ export default function Transactions(){
  const [accent,setAccent]=useState(()=>typeof window==="undefined"?"cobalt":localStorage.getItem("expense-accent")??"cobalt"),[rows,setRows]=useState<Tx[]>([]),[accounts,setAccounts]=useState<Account[]>([]),[people,setPeople]=useState<Person[]>([]),[employers,setEmployers]=useState<Employer[]>([]),[trips,setTrips]=useState<Trip[]>([]),[error,setError]=useState(""),[loading,setLoading]=useState(true),[filter,setFilter]=useState("all");
  useEffect(()=>{Promise.all([api<Tx[]>("/transactions"),api<Account[]>("/accounts"),api<Person[]>("/people"),api<Employer[]>("/employers"),api<Trip[]>("/trips")]).then(([t,a,p,e,r])=>{setRows(t);setAccounts(a);setPeople(p);setEmployers(e);setTrips(r)}).catch(e=>setError(e.message)).finally(()=>setLoading(false))},[]);
  const accountMap=useMemo(()=>Object.fromEntries(accounts.map(a=>[a.id,a])),[accounts]);
- const balances=useMemo(()=>{const totals:Record<number,number>={};accounts.forEach(a=>totals[a.id]=Number(a.opening_balance));const result:Record<number,number>={};[...rows].reverse().forEach(row=>{totals[row.account_id]=(totals[row.account_id]??0)+Number(row.amount);result[row.id]=totals[row.account_id]});return result},[rows,accounts]);
+ const balances=useMemo(()=>runningBalances(accounts,rows),[rows,accounts]);
  async function update(row:Tx,changes:Partial<Tx>){const updated=await api<Tx>(`/transactions/${row.id}`,{method:"PATCH",body:JSON.stringify(changes)});setRows(items=>items.map(item=>item.id===row.id?updated:item))}
  const visible=filter==="all"?rows:rows.filter(row=>row.account_id===Number(filter));
  function responsibility(row:Tx){

@@ -2,6 +2,7 @@ import hashlib
 import re
 from datetime import date
 from decimal import Decimal
+from difflib import SequenceMatcher
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
@@ -9,6 +10,37 @@ from sqlalchemy.orm import Session
 from app.models import Person, Purpose, Transaction
 
 _SPACE = re.compile(r"\s+")
+_LONG_IDENTIFIER = re.compile(r"\b\d{6,}\b")
+_PUNCTUATION = re.compile(r"[^A-Z0-9 ]+")
+
+
+def normalized_description(value: str) -> str:
+    text = _LONG_IDENTIFIER.sub(" ", value.upper())
+    text = _PUNCTUATION.sub(" ", text)
+    return _SPACE.sub(" ", text).strip()
+
+
+def suggest_from_history(
+    description: str, history: list[tuple[str, Purpose]]
+) -> tuple[Purpose | None, str]:
+    """Return a deterministic description-based suggestion; amounts are intentionally absent."""
+    candidate = normalized_description(description)
+    if not candidate:
+        return None, "unresolved"
+    best_purpose = None
+    best_score = 0.0
+    for previous_description, purpose in history:
+        previous = normalized_description(previous_description)
+        if not previous:
+            continue
+        if previous == candidate:
+            return purpose, "confident"
+        score = SequenceMatcher(None, candidate, previous).ratio()
+        if score > best_score:
+            best_score, best_purpose = score, purpose
+    if best_score >= 0.82:
+        return best_purpose, "suggested"
+    return None, "unresolved"
 
 
 def dedupe_hash(

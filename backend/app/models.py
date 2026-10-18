@@ -101,6 +101,7 @@ class StatementImport(TimestampMixin, Base):
     period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     opening_balance: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     closing_balance: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    overlap_warning: Mapped[bool] = mapped_column(Boolean, default=False)
     error_message: Mapped[str] = mapped_column(Text, default="")
     rows: Mapped[list[ImportRow]] = relationship(cascade="all, delete-orphan")
 

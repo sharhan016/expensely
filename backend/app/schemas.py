@@ -106,6 +106,7 @@ class ImportRowResponse(ORMModel):
 class StatementImportResponse(ORMModel):
     id: UUID
     batch_id: UUID
+    account_id: int | None
     original_filename: str
     status: ImportStatus
     bank_slug: str
@@ -115,6 +116,7 @@ class StatementImportResponse(ORMModel):
     period_end: date | None
     opening_balance: Decimal | None
     closing_balance: Decimal | None
+    overlap_warning: bool
     error_message: str
     rows: list[ImportRowResponse] = []
 
@@ -165,6 +167,17 @@ class RuleCreate(BaseModel):
     employer_id: int | None = None
     min_amount: Decimal | None = None
     max_amount: Decimal | None = None
+
+
+class RuleUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=140)
+    description_contains: str | None = Field(default=None, min_length=2, max_length=180)
+    purpose: Purpose | None = None
+    person_id: int | None = None
+    employer_id: int | None = None
+    min_amount: Decimal | None = None
+    max_amount: Decimal | None = None
+    is_active: bool | None = None
 
 
 class ReconciliationCreate(BaseModel):

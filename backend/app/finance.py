@@ -9,14 +9,16 @@ from app.models import (
     Account,
     ClassificationRule,
     Employer,
+    ImportRow,
     Person,
     Purpose,
     Reconciliation,
+    StatementImport,
     Transaction,
     Trip,
     User,
 )
-from app.schemas import ReconciliationCreate, RuleCreate, TripCreate
+from app.schemas import ReconciliationCreate, RuleCreate, RuleUpdate, TripCreate
 from app.security import current_user
 from app.services import calculate_reconciliation, person_balances
 
@@ -157,6 +159,40 @@ def create_rule(
     return rule
 
 
+@router.patch("/rules/{rule_id}")
+def update_rule(
+    rule_id: int,
+    payload: RuleUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    rule = db.scalar(
+        select(ClassificationRule).where(
+            ClassificationRule.id == rule_id, ClassificationRule.user_id == user.id
+        )
+    )
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(rule, field, value)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+@router.delete("/rules/{rule_id}", status_code=204)
+def delete_rule(rule_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    rule = db.scalar(
+        select(ClassificationRule).where(
+            ClassificationRule.id == rule_id, ClassificationRule.user_id == user.id
+        )
+    )
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    db.delete(rule)
+    db.commit()
+
+
 @router.get("/reconciliations")
 def reconciliations(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return db.scalars(
@@ -202,6 +238,24 @@ def reconcile(
         reconciliation.opening_balance = payload.opening_balance
         reconciliation.statement_closing_balance = payload.statement_closing_balance
     reconciliation.status = "balanced" if difference == 0 else "difference"
+    unresolved_count = db.scalar(
+        select(func.count(Transaction.id)).where(
+            Transaction.user_id == user.id,
+            Transaction.account_id == account.id,
+            Transaction.txn_date.between(payload.period_start, payload.period_end),
+            Transaction.purpose == Purpose.OTHER,
+        )
+    )
+    possible_duplicate_count = db.scalar(
+        select(func.count(ImportRow.id))
+        .join(StatementImport, StatementImport.id == ImportRow.statement_import_id)
+        .where(
+            StatementImport.user_id == user.id,
+            StatementImport.account_id == account.id,
+            ImportRow.txn_date.between(payload.period_start, payload.period_end),
+            ImportRow.duplicate_of_id.is_not(None),
+        )
+    )
     db.commit()
     db.refresh(reconciliation)
     return {
@@ -209,4 +263,7 @@ def reconcile(
         "expected_closing_balance": expected,
         "difference": difference,
         "movement_count": len(movements),
+        "unresolved_count": unresolved_count,
+        "possible_duplicate_count": possible_duplicate_count,
+        "cause": None,
     }

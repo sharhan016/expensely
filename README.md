@@ -34,6 +34,9 @@ Open `http://localhost:3000`, create the private beta account, and import one or
 more statements. PDF passwords are used only for the active extraction request
 and are never persisted.
 
+Optional sample data can be created with `DEMO_EMAIL=you@example.com make seed`;
+the command securely prompts for a password and never embeds one in the repository.
+
 ## Implemented MVP
 
 - Session authentication and private, size-limited statement storage.

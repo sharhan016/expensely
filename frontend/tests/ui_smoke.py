@@ -35,6 +35,25 @@ with sync_playwright() as playwright:
     page.wait_for_load_state("networkidle")
     assert page.get_by_text("Drop bank statements here").is_visible()
     page.screenshot(path=artifacts / "imports.png", full_page=True)
+    page.locator('input[type="file"]').set_input_files(
+        {
+            "name": "hdfc-smoke.csv",
+            "mimeType": "text/csv",
+            "buffer": (
+                b"HDFC Bank Statement,,,,\n"
+                b"Date,Narration,Withdrawal,Deposit,Closing Balance\n"
+                b"01/04/2026,UPI WATER,160.00,,99840.00\n"
+                b"02/04/2026,SALARY,,50000.00,149840.00\n"
+            ),
+        }
+    )
+    page.get_by_role("button", name="Extract transactions").click()
+    page.get_by_text("Extraction result").wait_for()
+    assert page.get_by_text("Import into account").is_visible()
+    page.get_by_label("Select all").check()
+    page.locator(".review-toolbar select").select_option("personal")
+    page.get_by_role("button", name=re.compile("Confirm to ledger")).click()
+    page.get_by_text(re.compile("2 transactions added")).wait_for()
 
     for route, heading in (
         ("transactions", "Every movement, in order."),
@@ -47,6 +66,8 @@ with sync_playwright() as playwright:
         page.goto(f"{base_url}/{route}")
         page.wait_for_load_state("networkidle")
         assert page.get_by_role("heading", name=heading).is_visible()
+        if route == "transactions":
+            assert page.get_by_text("UPI WATER").is_visible()
 
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{base_url}/imports")

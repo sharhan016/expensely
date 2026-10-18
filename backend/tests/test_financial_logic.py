@@ -1,7 +1,8 @@
 from datetime import date
 from decimal import Decimal
 
-from app.services import calculate_reconciliation, dedupe_hash
+from app.models import Purpose
+from app.services import calculate_reconciliation, dedupe_hash, suggest_from_history
 
 
 def test_dedupe_hash_normalizes_case_and_spacing():
@@ -39,3 +40,20 @@ def test_reconciliation_reports_difference_without_guessing_cause():
     )
     assert expected == Decimal("1150")
     assert difference == Decimal("-10")
+
+
+def test_previous_description_produces_reviewable_suggestion_without_amount():
+    purpose, confidence = suggest_from_history(
+        "UPI WATER CAN DELIVERY 999999999999",
+        [("UPI WATER CAN DELIVERY 123456789012", Purpose.BUSINESS)],
+    )
+    assert purpose == Purpose.BUSINESS
+    assert confidence == "confident"
+
+
+def test_unrelated_description_remains_unresolved():
+    purpose, confidence = suggest_from_history(
+        "NEFT SCHOOL FEES", [("UPI WATER CAN DELIVERY", Purpose.BUSINESS)]
+    )
+    assert purpose is None
+    assert confidence == "unresolved"
