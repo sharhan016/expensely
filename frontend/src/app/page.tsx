@@ -5,22 +5,24 @@ import { Landmark, WalletCards, HandCoins, CircleAlert, ArrowUpRight, Minus, Equ
 import { AppShell } from "@/components/AppShell";
 import Link from "next/link";
 import { api, inr } from "@/lib/api";
+import { WorkspaceState } from "@/components/WorkspaceState";
 
 export default function Home() {
   const [accent, setAccent] = useState(() =>
     typeof window === "undefined" ? "cobalt" : localStorage.getItem("expense-accent") ?? "cobalt",
   );
   const [summary,setSummary]=useState({bank_balance:0,credit_card_balance:0,entrusted_balance:0,available_balance:0,company_receivable:0,loan_balance:0,unresolved_count:0,account_count:0,credit_card_count:0});
-  const [activity,setActivity]=useState<{id:number;txn_date:string;description:string;account_id:number;amount:string;purpose:string}[]>([]),[accounts,setAccounts]=useState<Record<number,string>>({}),[name,setName]=useState("there");
-  useEffect(()=>{Promise.all([api<typeof summary>("/dashboard"),api<typeof activity>("/transactions"),api<{id:number;name:string}[]>("/accounts"),api<{display_name:string}>("/auth/me")]).then(([s,t,a,u])=>{setSummary(s);setActivity(t.slice(0,6));setAccounts(Object.fromEntries(a.map(item=>[item.id,item.name])));setName(u.display_name.split(" ")[0])}).catch(()=>{})},[]);
+  const [activity,setActivity]=useState<{id:number;txn_date:string;description:string;account_id:number;amount:string;purpose:string}[]>([]),[accounts,setAccounts]=useState<Record<number,string>>({}),[name,setName]=useState(""),[loading,setLoading]=useState(true),[error,setError]=useState("");
+  useEffect(()=>{Promise.all([api<typeof summary>("/dashboard"),api<typeof activity>("/transactions"),api<{id:number;name:string}[]>("/accounts"),api<{display_name:string}>("/auth/me")]).then(([s,t,a,u])=>{setSummary(s);setActivity(t.slice(0,6));setAccounts(Object.fromEntries(a.map(item=>[item.id,item.name])));setName(u.display_name.split(" ")[0])}).catch(reason=>setError(reason instanceof Error?reason.message:"Unable to load the dashboard")).finally(()=>setLoading(false))},[]);
   return (
     <AppShell accent={accent} onAccent={setAccent} active="Home">
       <header className="page-head">
-        <div><p className="kicker">Overview</p><h1>Financial overview</h1><p>Signed in as {name}. Review account balances, liabilities, and outstanding items.</p></div>
+        <div><p className="kicker">Overview</p><h1>{name ? `${name}’s financial overview` : "Financial overview"}</h1><p>Balances, liabilities, and items that still need a decision.</p></div>
         <Link className="primary" href="/imports">Import statements <ArrowUpRight size={15}/></Link>
       </header>
 
-      <section className="fund-equation" aria-label="Available funds calculation">
+      <WorkspaceState loading={loading} error={error}/>
+      {!loading&&!error&&<><section className="fund-equation" aria-label="Available funds calculation">
         <Metric icon={<Landmark/>} label="Total bank balance" value={inr(summary.bank_balance)} detail={`Across ${summary.account_count} accounts`} />
         <Minus className="operator"/>
         <Metric icon={<HandCoins/>} label="Entrusted funds" value={inr(summary.entrusted_balance)} detail="Belongs to other people" tone="ochre"/>
@@ -37,8 +39,9 @@ export default function Home() {
 
       <section className="ledger-card">
         <div className="section-head"><div><p className="kicker">Latest movement</p><h2>Recent activity</h2></div><Link className="text-button" href="/transactions">View full ledger →</Link></div>
-        <div className="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Purpose</th><th>Amount</th></tr></thead><tbody>{activity.map((row) => <tr key={row.id}><td>{row.txn_date}</td><td className="strong">{row.description}</td><td><span className="account-chip">{accounts[row.account_id]??"Account"}</span></td><td>{row.purpose.replaceAll("_"," ")}</td><td className={Number(row.amount)>=0 ? "money in" : "money out"}>{inr(row.amount)}</td></tr>)}</tbody></table></div>
+        {activity.length?<div className="table-scroll"><table className="responsive-table"><thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Purpose</th><th>Amount</th></tr></thead><tbody>{activity.map((row) => <tr key={row.id}><td data-label="Date">{row.txn_date}</td><td data-label="Description" className="strong">{row.description}</td><td data-label="Account"><span className="account-chip">{accounts[row.account_id]??"Account"}</span></td><td data-label="Purpose">{row.purpose.replaceAll("_"," ")}</td><td data-label="Amount" className={Number(row.amount)>=0 ? "money in" : "money out"}>{inr(row.amount)}</td></tr>)}</tbody></table></div>:<WorkspaceState empty="No ledger activity yet" emptyDetail="Import and confirm a statement to see recent movements here."/>}
       </section>
+      </>}
     </AppShell>
   );
 }
