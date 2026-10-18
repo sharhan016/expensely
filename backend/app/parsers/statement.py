@@ -2,6 +2,7 @@ import contextlib
 import csv
 import io
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pdfplumber
@@ -16,6 +17,8 @@ class ParseError(Exception):
 
 def _detect_bank(text: str) -> str:
     lowered = text.lower()
+    if "www.federalbank.co.in" in lowered or "federalbank.co.in" in lowered:
+        return "federal"
     for needle, slug in (
         ("hdfc bank", "hdfc"),
         ("icici bank", "icici"),
@@ -27,6 +30,22 @@ def _detect_bank(text: str) -> str:
         if needle in lowered:
             return slug
     return "unknown"
+
+
+def _add_account_identity(parsed: ParsedStatement, text: str) -> ParsedStatement:
+    if parsed.bank_slug != "federal":
+        return parsed
+    account = re.search(
+        r"Account\s+(?:Number|No\.?)\s*:\s*([0-9Xx*\s]{6,})",
+        text,
+        re.I,
+    )
+    compact = re.sub(r"\s+", "", account.group(1)) if account else ""
+    return replace(
+        parsed,
+        account_name="Federal Bank Account",
+        source_hint=compact[-8:],
+    )
 
 
 def _column(headers: list[str], *names: str) -> int | None:
@@ -163,7 +182,8 @@ def parse_statement(path: Path, password: str | None = None) -> ParsedStatement:
         if "yes bank" in text.lower() and "credit card statement" in text.lower():
             return _parse_yes_credit_card(text)
         rows = [row for table in tables for row in table]
-        return _parse_table([[cell or "" for cell in row] for row in rows], _detect_bank(text))
+        parsed = _parse_table([[cell or "" for cell in row] for row in rows], _detect_bank(text))
+        return _add_account_identity(parsed, text)
     if suffix in {".csv", ".txt"}:
         text = path.read_text(encoding="utf-8-sig", errors="ignore")
         sample = text[:4096]
@@ -171,5 +191,6 @@ def parse_statement(path: Path, password: str | None = None) -> ParsedStatement:
             dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
         except csv.Error:
             dialect = csv.excel
-        return _parse_table(list(csv.reader(io.StringIO(text), dialect)), _detect_bank(text))
+        parsed = _parse_table(list(csv.reader(io.StringIO(text), dialect)), _detect_bank(text))
+        return _add_account_identity(parsed, text)
     raise ParseError("Use a PDF, CSV, or text statement for this MVP.")

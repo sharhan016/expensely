@@ -37,6 +37,22 @@ def test_csv_statement_extracts_signed_rows(tmp_path):
     ]
 
 
+def test_federal_statement_branding_detects_bank_and_account(tmp_path):
+    statement = tmp_path / "federal.csv"
+    statement.write_text(
+        "Federal statement,Website:www.federalbank.co.in,,\n"
+        "Account Number : 1088XXXXXX6482,,,\n"
+        "Date,Narration,Withdrawal,Deposit,Closing Balance\n"
+        "01/04/2024,UPI WATER,160.00,,99840.00\n"
+    )
+
+    parsed = parse_statement(statement)
+
+    assert parsed.bank_slug == "federal"
+    assert parsed.account_name == "Federal Bank Account"
+    assert parsed.source_hint.endswith("6482")
+
+
 def test_unsupported_file_has_actionable_error(tmp_path):
     statement = tmp_path / "statement.xlsx"
     statement.write_bytes(b"not a spreadsheet")
