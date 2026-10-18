@@ -1,5 +1,5 @@
-.PHONY: setup dev dev-backend dev-frontend db-up db-down migrate seed test lint typecheck build \
-	test-db-reset test-db-down migration-smoke e2e verify
+.PHONY: setup dev dev-backend dev-frontend db-up db-down migrate seed test integration lint \
+	typecheck build test-db-reset test-db-down migration-smoke e2e verify
 
 TEST_DATABASE_URL ?= postgresql+psycopg://expense_test:expense_test@127.0.0.1:55435/expense_analyzer_test
 
@@ -34,6 +34,9 @@ test:
 	cd backend && .venv/bin/pytest
 	cd frontend && npm test -- --run
 
+integration:
+	cd backend && TEST_DATABASE_URL="$(TEST_DATABASE_URL)" .venv/bin/pytest tests/integration
+
 lint:
 	cd backend && .venv/bin/ruff check . && .venv/bin/ruff format --check .
 	cd frontend && npm run lint
@@ -59,4 +62,4 @@ migration-smoke:
 e2e:
 	cd frontend && TEST_DATABASE_URL="$(TEST_DATABASE_URL)" npm run test:e2e
 
-verify: test-db-reset lint typecheck test migration-smoke build e2e
+verify: test-db-reset lint typecheck test migration-smoke integration build e2e

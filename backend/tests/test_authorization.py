@@ -311,3 +311,20 @@ def test_owned_associations_remain_usable(api_context):
     assert response.status_code == 200
     assert response.json()["person_id"] == context["owner_person"].id
     assert response.json()["trip_id"] == context["owner_trip"].id
+
+
+def test_replacing_default_employer_keeps_one_default(api_context):
+    context = api_context
+    response = context["client"].post(
+        "/employers", json={"name": "New default employer", "is_default": True}
+    )
+
+    assert response.status_code == 201
+    context["db"].refresh(context["owner_employer"])
+    assert context["owner_employer"].is_default is False
+    defaults = [
+        employer
+        for employer in context["db"].query(Employer).filter_by(user_id=context["owner"].id)
+        if employer.is_default
+    ]
+    assert [employer.name for employer in defaults] == ["New default employer"]

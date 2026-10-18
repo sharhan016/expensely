@@ -1,6 +1,7 @@
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -205,6 +206,15 @@ def create_employer(
             employer.is_default = False
     employer = Employer(user_id=user.id, **payload.model_dump())
     db.add(employer)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if "ux_employers_one_default_per_user" in str(exc.orig):
+            raise HTTPException(
+                status_code=409,
+                detail="Another default employer was saved at the same time; please retry",
+            ) from exc
+        raise
     db.refresh(employer)
     return employer

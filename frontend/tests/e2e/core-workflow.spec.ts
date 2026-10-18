@@ -32,7 +32,24 @@ test("register, import a statement, and open the ledger", async ({ page }) => {
   await page.getByRole("button", { name: /Confirm to ledger/ }).click();
   await expect(page.getByText(/2 transactions added to the ledger/)).toBeVisible();
 
+  await page.getByRole("link", { name: "People & Funds" }).click();
+  await page.getByRole("button", { name: "Add person" }).click();
+  await page.getByLabel("Full name").fill("Alex Morgan");
+  await page.getByLabel("Relationship").fill("Friend");
+  await page.getByRole("button", { name: "Save person" }).click();
+  await expect(page.getByRole("button", { name: /Alex Morgan/ })).toBeVisible();
+
   await page.getByRole("link", { name: "Transactions" }).click();
   await expect(page.getByRole("heading", { name: "Transaction ledger" })).toBeVisible();
+  await expect(page.getByText("UPI WATER")).toBeVisible();
+  await page.getByLabel("Purpose for UPI WATER").selectOption("loan_given");
+  await expect(page.getByLabel("Related person for UPI WATER")).toHaveValue(/\d+/);
+  await expect(page.getByLabel("Related person for UPI WATER").locator("option:checked")).toHaveText(
+    "Alex Morgan",
+  );
+
+  await page.getByRole("link", { name: "People & Funds" }).click();
+  await page.getByRole("button", { name: /Alex Morgan/ }).click();
+  await expect(page.getByRole("heading", { name: "Alex Morgan" })).toBeVisible();
   await expect(page.getByText("UPI WATER")).toBeVisible();
 });

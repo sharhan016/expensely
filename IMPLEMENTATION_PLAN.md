@@ -226,16 +226,20 @@ Definition of done:
 
 - All association endpoints pass ownership matrices; database constraints match API policy; no cross-user financial link is possible.
 
-**Status: In progress — 18 October 2026.** A centralized association policy now rejects
-foreign person, employer, and trip references; applies the documented required-person and
-required-employer rules; and is enforced by transaction edits, import-row edits, atomic bulk
-edits, rule writes, and import confirmation. Existing account/import/transaction/trip primary
-lookups were verified as owner-scoped. The complete quality gate passes with 26 Pytest tests,
-including 13 new ownership-policy/API tests, plus the existing frontend, migration, build, and
-Chromium checks. Outstanding: the PostgreSQL default-employer uniqueness migration,
-concurrency integration test, and owned-association Playwright path require migration approval.
-The read-only production-data preflight found zero users with more than one default employer,
-so the proposed unique-index migration currently has no known data conflict.
+**Status: Complete — 18 October 2026.** A centralized association policy rejects foreign
+person, employer, and trip references; applies the documented required-person and
+required-employer rules; and protects transaction edits, import-row edits, atomic bulk edits,
+rule writes, and import confirmation. Existing account/import/transaction/trip primary lookups
+are owner-scoped. A reversible partial unique PostgreSQL index now guarantees one default
+employer per user, including concurrent writes; the preflight found no conflicting production
+rows and revision `e7c31f6a9420` is applied locally. Composite association foreign keys were
+not added: staged rows do not carry `user_id`, so doing so would require denormalization and a
+second data migration; server-side ownership remains the authoritative boundary and this can
+be reconsidered during the Slice 1.2 schema expansion. `make verify` passed 27 ordinary Pytest
+tests with one environment-gated skip, the dedicated PostgreSQL concurrency test, one Vitest
+test, migration downgrade/re-upgrade, production build, and an owned person-association
+Chromium workflow. Browser tests now use an isolated Next.js build directory and can run while
+the development app remains open.
 
 #### Slice 1.2: Separate immutable movement from editable meaning
 

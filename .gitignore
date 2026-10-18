@@ -19,6 +19,7 @@ htmlcov/
 # Node / Next.js
 node_modules/
 .next/
+.next-e2e/
 out/
 coverage/
 npm-debug.log*

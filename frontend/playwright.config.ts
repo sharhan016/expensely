@@ -25,7 +25,8 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: 'API_BASE_URL="http://127.0.0.1:18000" npm run dev -- --hostname 127.0.0.1 --port 3100',
+      command:
+        'NEXT_DIST_DIR=".next-e2e" API_BASE_URL="http://127.0.0.1:18000" npm run dev -- --hostname 127.0.0.1 --port 3100',
       url: "http://127.0.0.1:3100/login",
       reuseExistingServer: false,
       timeout: 60_000,
