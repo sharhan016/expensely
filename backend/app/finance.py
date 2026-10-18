@@ -35,11 +35,30 @@ router = APIRouter(tags=["financial workspace"])
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
     transactions = db.scalars(select(Transaction).where(Transaction.user_id == user.id)).all()
-    opening = sum(
-        (a.opening_balance for a in db.scalars(select(Account).where(Account.user_id == user.id))),
+    accounts = db.scalars(select(Account).where(Account.user_id == user.id)).all()
+    bank_accounts = [account for account in accounts if account.kind != "credit_card"]
+    credit_accounts = [account for account in accounts if account.kind == "credit_card"]
+    bank_account_ids = {account.id for account in bank_accounts}
+    credit_account_ids = {account.id for account in credit_accounts}
+    bank = sum((account.opening_balance for account in bank_accounts), Decimal("0")) + sum(
+        (
+            transaction.amount
+            for transaction in transactions
+            if transaction.account_id in bank_account_ids
+        ),
         Decimal("0"),
     )
-    bank = opening + sum((t.amount for t in transactions), Decimal("0"))
+    credit_position = sum(
+        (account.opening_balance for account in credit_accounts), Decimal("0")
+    ) + sum(
+        (
+            transaction.amount
+            for transaction in transactions
+            if transaction.account_id in credit_account_ids
+        ),
+        Decimal("0"),
+    )
+    credit_card_balance = max(-credit_position, Decimal("0"))
     entrusted = sum(
         (t.amount for t in transactions if t.purpose == Purpose.ENTRUSTED), Decimal("0")
     )
@@ -53,14 +72,14 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user))
     )
     return {
         "bank_balance": bank,
+        "credit_card_balance": credit_card_balance,
         "entrusted_balance": entrusted,
         "available_balance": bank - entrusted,
         "company_receivable": max(spent - reimbursed, Decimal("0")),
         "loan_balance": loans,
         "unresolved_count": sum(t.purpose == Purpose.OTHER for t in transactions),
-        "account_count": db.scalar(
-            select(func.count(Account.id)).where(Account.user_id == user.id)
-        ),
+        "account_count": len(bank_accounts),
+        "credit_card_count": len(credit_accounts),
     }
 
 

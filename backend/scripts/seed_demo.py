@@ -16,7 +16,7 @@ from app.services import dedupe_hash
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--email", required=True)
-    parser.add_argument("--name", default="Jasmine Shah")
+    parser.add_argument("--name", default="Demo User")
     args = parser.parse_args()
     password = getpass("Demo workspace password: ")
     if len(password) < 10:
@@ -38,11 +38,11 @@ def main() -> None:
             account_hint="4242",
             opening_balance=Decimal("50000"),
         )
-        person = Person(user_id=user.id, name="Fatah Khan", relationship_label="Family")
-        employer = Employer(user_id=user.id, name="Acuver Consulting", is_default=True)
+        person = Person(user_id=user.id, name="Sample Contact", relationship_label="Family")
+        employer = Employer(user_id=user.id, name="Example Company", is_default=True)
         trip = Trip(
             user_id=user.id,
-            name="Dubai client visit",
+            name="Sample trip",
             starts_on=date(2026, 10, 1),
             ends_on=date(2026, 10, 7),
         )

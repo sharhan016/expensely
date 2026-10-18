@@ -10,13 +10,13 @@ export default function Home() {
   const [accent, setAccent] = useState(() =>
     typeof window === "undefined" ? "cobalt" : localStorage.getItem("expense-accent") ?? "cobalt",
   );
-  const [summary,setSummary]=useState({bank_balance:0,entrusted_balance:0,available_balance:0,company_receivable:0,loan_balance:0,unresolved_count:0,account_count:0});
+  const [summary,setSummary]=useState({bank_balance:0,credit_card_balance:0,entrusted_balance:0,available_balance:0,company_receivable:0,loan_balance:0,unresolved_count:0,account_count:0,credit_card_count:0});
   const [activity,setActivity]=useState<{id:number;txn_date:string;description:string;account_id:number;amount:string;purpose:string}[]>([]),[accounts,setAccounts]=useState<Record<number,string>>({}),[name,setName]=useState("there");
   useEffect(()=>{Promise.all([api<typeof summary>("/dashboard"),api<typeof activity>("/transactions"),api<{id:number;name:string}[]>("/accounts"),api<{display_name:string}>("/auth/me")]).then(([s,t,a,u])=>{setSummary(s);setActivity(t.slice(0,6));setAccounts(Object.fromEntries(a.map(item=>[item.id,item.name])));setName(u.display_name.split(" ")[0])}).catch(()=>{})},[]);
   return (
     <AppShell accent={accent} onAccent={setAccent} active="Home">
       <header className="page-head">
-        <div><p className="kicker">Private financial workspace</p><h1>Good morning, {name}.</h1><p>Your money, with everyone&apos;s share made explicit.</p></div>
+        <div><p className="kicker">Overview</p><h1>Financial overview</h1><p>Signed in as {name}. Review account balances, liabilities, and outstanding items.</p></div>
         <Link className="primary" href="/imports">Import statements <ArrowUpRight size={15}/></Link>
       </header>
 
@@ -29,6 +29,7 @@ export default function Home() {
       </section>
 
       <section className="signal-grid">
+        <Signal label="Credit card balance" value={inr(summary.credit_card_balance)} detail={`Amount payable across ${summary.credit_card_count} card${summary.credit_card_count===1?"":"s"}`} icon={<WalletCards/>}/>
         <Signal label="Company receivable" value={inr(summary.company_receivable)} detail="Business expenses still recoverable" icon={<WalletCards/>}/>
         <Signal label="Loans outstanding" value={inr(summary.loan_balance)} detail="Across people" icon={<HandCoins/>}/>
         <Signal label="Unresolved items" value={String(summary.unresolved_count)} detail="Review before reconciliation" icon={<CircleAlert/>} warning/>
