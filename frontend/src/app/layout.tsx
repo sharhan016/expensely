@@ -4,6 +4,8 @@ import "@fontsource/ibm-plex-sans/500.css";
 import "@fontsource/ibm-plex-sans/600.css";
 import "./globals.css";
 import "./workspace.css";
+import "./finance.css";
+import "./password.css";
 
 export const metadata = {
   title: "Expense Analyzer",

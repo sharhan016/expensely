@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.finance import router as finance_router
 from app.imports import router as imports_router
-from app.models import Account, Employer, Person, Transaction, User
+from app.models import Account, Employer, Person, Reconciliation, Transaction, User
 from app.schemas import (
     AccountResponse,
     EmployerCreate,
@@ -32,6 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(imports_router)
+app.include_router(finance_router)
 
 
 @app.get("/health")
@@ -121,6 +123,15 @@ def update_transaction(
         transaction.employer_id = db.scalar(
             select(Employer.id).where(Employer.user_id == user.id, Employer.is_default.is_(True))
         )
+    for reconciliation in db.scalars(
+        select(Reconciliation).where(
+            Reconciliation.user_id == user.id,
+            Reconciliation.account_id == transaction.account_id,
+            Reconciliation.period_start <= transaction.txn_date,
+            Reconciliation.period_end >= transaction.txn_date,
+        )
+    ):
+        reconciliation.status = "invalidated"
     db.commit()
     db.refresh(transaction)
     return transaction

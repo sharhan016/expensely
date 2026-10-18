@@ -9,9 +9,12 @@ from app.config import settings
 from app.database import get_db
 from app.models import (
     Account,
+    ClassificationRule,
     ImportBatch,
     ImportRow,
     ImportStatus,
+    Purpose,
+    Reconciliation,
     StatementImport,
     Transaction,
     User,
@@ -23,10 +26,11 @@ from app.schemas import (
     ImportConfirmResponse,
     ImportRowResponse,
     ImportRowUpdate,
+    PdfPasswordRequest,
     StatementImportResponse,
 )
 from app.security import current_user
-from app.services import dedupe_hash
+from app.services import calculate_reconciliation, dedupe_hash
 
 router = APIRouter(prefix="/imports", tags=["statement imports"])
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".txt"}
@@ -41,6 +45,57 @@ def _owned_import(db: Session, import_id: uuid.UUID, user_id: int) -> StatementI
     if not statement:
         raise HTTPException(status_code=404, detail="Statement import not found")
     return statement
+
+
+def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int) -> None:
+    statement.bank_slug = parsed.bank_slug
+    statement.account_hint = parsed.source_hint
+    statement.statement_kind = parsed.statement_kind
+    statement.period_start = parsed.period_start
+    statement.period_end = parsed.period_end
+    statement.opening_balance = parsed.opening_balance
+    statement.closing_balance = parsed.closing_balance
+    rules = db.scalars(
+        select(ClassificationRule).where(
+            ClassificationRule.user_id == user_id,
+            ClassificationRule.is_active.is_(True),
+        )
+    ).all()
+    statement.rows.clear()
+    for transaction in parsed.transactions:
+        duplicate = db.scalar(
+            select(Transaction.id).where(
+                Transaction.user_id == user_id,
+                Transaction.txn_date == transaction.txn_date,
+                Transaction.amount == transaction.amount,
+                Transaction.description == transaction.description,
+            )
+        )
+        matched_rule = next(
+            (
+                rule
+                for rule in rules
+                if rule.description_contains.casefold() in transaction.description.casefold()
+                and (rule.min_amount is None or abs(transaction.amount) >= rule.min_amount)
+                and (rule.max_amount is None or abs(transaction.amount) <= rule.max_amount)
+            ),
+            None,
+        )
+        statement.rows.append(
+            ImportRow(
+                txn_date=transaction.txn_date,
+                description=transaction.description,
+                amount=transaction.amount,
+                balance=transaction.balance,
+                reference=transaction.reference,
+                duplicate_of_id=duplicate,
+                selected=duplicate is None,
+                purpose=matched_rule.purpose if matched_rule else Purpose.OTHER,
+                confidence="confident" if matched_rule else "unresolved",
+            )
+        )
+    statement.status = ImportStatus.READY
+    statement.error_message = ""
 
 
 @router.post("", response_model=list[StatementImportResponse], status_code=201)
@@ -79,32 +134,7 @@ def upload_statements(
         db.flush()
         try:
             parsed = parse_statement(destination)
-            statement.bank_slug = parsed.bank_slug
-            statement.account_hint = parsed.source_hint
-            statement.statement_kind = parsed.statement_kind
-            statement.period_start = parsed.period_start
-            statement.period_end = parsed.period_end
-            statement.opening_balance = parsed.opening_balance
-            statement.closing_balance = parsed.closing_balance
-            for transaction in parsed.transactions:
-                duplicate = db.scalar(
-                    select(Transaction.id).where(
-                        Transaction.user_id == user.id,
-                        Transaction.txn_date == transaction.txn_date,
-                        Transaction.amount == transaction.amount,
-                        Transaction.description == transaction.description,
-                    )
-                )
-                statement.rows.append(ImportRow(
-                    txn_date=transaction.txn_date,
-                    description=transaction.description,
-                    amount=transaction.amount,
-                    balance=transaction.balance,
-                    reference=transaction.reference,
-                    duplicate_of_id=duplicate,
-                    selected=duplicate is None,
-                ))
-            statement.status = ImportStatus.READY
+            _stage_parsed(db, statement, parsed, user.id)
         except ParseError as exc:
             statement.status = (
                 ImportStatus.PASSWORD_REQUIRED
@@ -115,6 +145,28 @@ def upload_statements(
         results.append(statement)
     db.commit()
     return [_owned_import(db, item.id, user.id) for item in results]
+
+
+@router.post("/{import_id}/unlock", response_model=StatementImportResponse)
+def unlock_pdf(
+    import_id: uuid.UUID,
+    payload: PdfPasswordRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    statement = _owned_import(db, import_id, user.id)
+    if statement.status != ImportStatus.PASSWORD_REQUIRED:
+        raise HTTPException(status_code=409, detail="This statement is not waiting for a password")
+    try:
+        parsed = parse_statement(
+            settings.upload_dir / statement.storage_key,
+            password=payload.password.get_secret_value(),
+        )
+        _stage_parsed(db, statement, parsed, user.id)
+        db.commit()
+    except ParseError as exc:
+        raise HTTPException(status_code=422, detail="The password did not unlock this PDF") from exc
+    return _owned_import(db, statement.id, user.id)
 
 
 @router.get("", response_model=list[StatementImportResponse])
@@ -208,26 +260,68 @@ def confirm_import(
         fingerprint = dedupe_hash(
             account.id, row.txn_date, row.amount, row.description, row.reference
         )
-        if db.scalar(select(Transaction.id).where(
-            Transaction.user_id == user.id, Transaction.dedupe_hash == fingerprint
-        )):
+        if db.scalar(
+            select(Transaction.id).where(
+                Transaction.user_id == user.id, Transaction.dedupe_hash == fingerprint
+            )
+        ):
             skipped += 1
             continue
-        db.add(Transaction(
-            user_id=user.id,
-            account_id=account.id,
-            statement_import_id=statement.id,
-            txn_date=row.txn_date,
-            description=row.description,
-            amount=row.amount,
-            bank_balance=row.balance,
-            reference=row.reference,
-            dedupe_hash=fingerprint,
-            purpose=row.purpose,
-        ))
+        db.add(
+            Transaction(
+                user_id=user.id,
+                account_id=account.id,
+                statement_import_id=statement.id,
+                txn_date=row.txn_date,
+                description=row.description,
+                amount=row.amount,
+                bank_balance=row.balance,
+                reference=row.reference,
+                dedupe_hash=fingerprint,
+                purpose=row.purpose,
+            )
+        )
         imported += 1
     statement.account_id = account.id
     statement.status = ImportStatus.CONFIRMED
+    db.flush()
+    if (
+        statement.period_start
+        and statement.period_end
+        and statement.opening_balance is not None
+        and statement.closing_balance is not None
+    ):
+        movements = list(
+            db.scalars(
+                select(Transaction.amount).where(
+                    Transaction.user_id == user.id,
+                    Transaction.account_id == account.id,
+                    Transaction.txn_date.between(statement.period_start, statement.period_end),
+                )
+            )
+        )
+        _, difference = calculate_reconciliation(
+            statement.opening_balance, movements, statement.closing_balance
+        )
+        reconciliation = db.scalar(
+            select(Reconciliation).where(
+                Reconciliation.user_id == user.id,
+                Reconciliation.account_id == account.id,
+                Reconciliation.period_start == statement.period_start,
+                Reconciliation.period_end == statement.period_end,
+            )
+        )
+        if not reconciliation:
+            reconciliation = Reconciliation(
+                user_id=user.id,
+                account_id=account.id,
+                period_start=statement.period_start,
+                period_end=statement.period_end,
+                opening_balance=statement.opening_balance,
+                statement_closing_balance=statement.closing_balance,
+            )
+            db.add(reconciliation)
+        reconciliation.status = "balanced" if difference == 0 else "difference"
     db.commit()
     return ImportConfirmResponse(
         imported=imported, skipped_duplicates=skipped, account_id=account.id

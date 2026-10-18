@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr
 
 from app.models import ImportStatus, Purpose
 
@@ -136,3 +136,31 @@ class ImportConfirmResponse(BaseModel):
     imported: int
     skipped_duplicates: int
     account_id: int
+
+
+class PdfPasswordRequest(BaseModel):
+    password: SecretStr
+
+
+class TripCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=140)
+    starts_on: date | None = None
+    ends_on: date | None = None
+
+
+class RuleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=140)
+    description_contains: str = Field(min_length=2, max_length=180)
+    purpose: Purpose
+    person_id: int | None = None
+    employer_id: int | None = None
+    min_amount: Decimal | None = None
+    max_amount: Decimal | None = None
+
+
+class ReconciliationCreate(BaseModel):
+    account_id: int
+    period_start: date
+    period_end: date
+    opening_balance: Decimal
+    statement_closing_balance: Decimal

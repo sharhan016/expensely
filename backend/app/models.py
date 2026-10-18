@@ -194,3 +194,17 @@ class Reconciliation(TimestampMixin, Base):
     opening_balance: Mapped[Decimal] = mapped_column(Numeric(16, 2))
     statement_closing_balance: Mapped[Decimal] = mapped_column(Numeric(16, 2))
     status: Mapped[str] = mapped_column(String(20), default="draft")
+
+
+class ClassificationRule(TimestampMixin, Base):
+    __tablename__ = "classification_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(140))
+    description_contains: Mapped[str] = mapped_column(String(180))
+    purpose: Mapped[Purpose] = mapped_column(Enum(Purpose))
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id"), nullable=True)
+    employer_id: Mapped[int | None] = mapped_column(ForeignKey("employers.id"), nullable=True)
+    min_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    max_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)

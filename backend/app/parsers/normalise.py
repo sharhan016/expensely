@@ -3,8 +3,16 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 DATE_FORMATS = (
-    "%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y", "%d-%m-%y", "%d-%b-%Y",
-    "%d-%b-%y", "%d %b %Y", "%d %B %Y", "%Y-%m-%d", "%b %d, %Y",
+    "%d/%m/%Y",
+    "%d/%m/%y",
+    "%d-%m-%Y",
+    "%d-%m-%y",
+    "%d-%b-%Y",
+    "%d-%b-%y",
+    "%d %b %Y",
+    "%d %B %Y",
+    "%Y-%m-%d",
+    "%b %d, %Y",
 )
 _NOISE = re.compile(r"(?i)(?:₹|rs\.?|inr|\s)")
 _DEBIT = re.compile(r"(?i)\b(?:dr|debit)\.?$")

@@ -1,5 +1,6 @@
 # Reference material is deliberately outside this product's history.
 /reference/
+/frontend/AGENTS.md
 
 # Local configuration and secrets
 .env

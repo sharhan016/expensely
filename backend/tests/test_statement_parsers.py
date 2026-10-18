@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 
 from app.parsers.normalise import parse_amount, parse_date, parse_signed_amount
-from app.parsers.statement import ParseError, parse_statement
+from app.parsers.statement import ParseError, _parse_yes_credit_card, parse_statement
 
 
 def test_indian_amount_formats_are_exact():
@@ -42,3 +42,23 @@ def test_unsupported_file_has_actionable_error(tmp_path):
     statement.write_bytes(b"not a spreadsheet")
     with pytest.raises(ParseError, match="PDF, CSV, or text"):
         parse_statement(statement)
+
+
+def test_yes_credit_card_text_normalises_spends_and_payments():
+    text = """Credit Card Statement YES BANK
+Statement Period: 17/09/2026 To 16/10/2026
+Previous Balance : Rs. 19,329.72 Dr
+Total Amount Due: Rs. 10,410.16
+Statement Details
+Date Transaction Details Merchant Category Amount (Rs.)
+17/09/2026 UPI MARKET - Ref No: AB123 Groceries 1,000.00 Dr
+18/09/2026 PAYMENT RECEIVED - Ref No: CD456 Payments 19,380.72 Cr
+"""
+    parsed = _parse_yes_credit_card(text)
+    assert parsed.statement_kind == "credit_card"
+    assert parsed.opening_balance == Decimal("-19329.72")
+    assert parsed.closing_balance == Decimal("-10410.16")
+    assert [row.amount for row in parsed.transactions] == [
+        Decimal("-1000.00"),
+        Decimal("19380.72"),
+    ]

@@ -13,6 +13,7 @@ export default function ImportsPage() {
   const [files,setFiles]=useState<File[]>([]), [statements,setStatements]=useState<Statement[]>([]);
   const [activeId,setActiveId]=useState<string>(), [selected,setSelected]=useState<Set<number>>(new Set());
   const [busy,setBusy]=useState(false), [message,setMessage]=useState("");
+  const [pdfPassword,setPdfPassword]=useState("");
   const input=useRef<HTMLInputElement>(null), active=statements.find(item=>item.id===activeId)??statements[0];
   function accept(incoming:FileList|null){if(incoming)setFiles(current=>[...current,...Array.from(incoming)].slice(0,20));}
   async function upload(){
@@ -35,6 +36,14 @@ export default function ImportsPage() {
     else{const error=await response.json().catch(()=>({detail:"Confirmation failed"}));setMessage(error.detail??"Confirmation failed");}
     setBusy(false);
   }
+  async function unlock(){
+    if(!active||!pdfPassword)return; setBusy(true); setMessage("");
+    const response=await fetch(`/api/imports/${active.id}/unlock`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pdfPassword})});
+    setPdfPassword("");
+    if(response.ok){const updated:Statement=await response.json();setStatements(items=>items.map(item=>item.id===updated.id?updated:item));setMessage("PDF unlocked. The password was not stored.");}
+    else{setMessage("That password did not unlock the PDF.");}
+    setBusy(false);
+  }
   return <AppShell accent={accent} onAccent={setAccent} active="Accounts & Import">
     <header className="page-head"><div><p className="kicker">Accounts & import</p><h1>Bring every account into one ledger.</h1><p>Add several statement periods at once. Nothing enters your ledger until you confirm it.</p></div></header>
     {!statements.length?<>
@@ -44,10 +53,10 @@ export default function ImportsPage() {
       {message&&<p className="form-message">{message}</p>}
     </>:<section className="review-layout">
       <aside className="statement-list"><p className="kicker">This upload</p><h2>{statements.length} statements</h2>{statements.map(statement=><button key={statement.id} className={active?.id===statement.id?"selected":""} onClick={()=>{setActiveId(statement.id);setSelected(new Set())}}><FileText/><span><strong>{statement.original_filename}</strong><small>{statement.bank_slug==="unknown"?"Bank needs confirmation":statement.bank_slug.toUpperCase()} · {statement.rows.length} rows</small></span><i className={statement.status}/></button>)}</aside>
-      <div className="review-card">{active&&<><div className="review-title"><div><p className="kicker">Extraction result</p><h2>{active.original_filename}</h2><p>{active.period_start??"Period not detected"} — {active.period_end??"review dates"}</p></div><button className="primary" onClick={confirm} disabled={busy}>{busy?"Saving…":"Confirm to ledger"} <ArrowRight size={14}/></button></div>
+      <div className="review-card">{active&&<>{active.status==="password_required"?<div className="password-prompt"><FileText/><p className="kicker">Protected statement</p><h2>Enter the PDF password</h2><p>The password is used in memory to unlock this file. It is never logged or saved.</p><div><input type="password" value={pdfPassword} onChange={event=>setPdfPassword(event.target.value)} autoComplete="off" placeholder="PDF password"/><button className="primary" onClick={unlock} disabled={busy||!pdfPassword}>{busy?"Unlocking…":"Unlock and extract"}</button></div></div>:<><div className="review-title"><div><p className="kicker">Extraction result</p><h2>{active.original_filename}</h2><p>{active.period_start??"Period not detected"} — {active.period_end??"review dates"}</p></div><button className="primary" onClick={confirm} disabled={busy}>{busy?"Saving…":"Confirm to ledger"} <ArrowRight size={14}/></button></div>
         <div className="review-toolbar"><strong>{selected.size?`${selected.size} selected`:`${active.rows.length} extracted`}</strong><span>{active.rows.filter(row=>row.duplicate_of_id).length} possible duplicates</span><select disabled={!selected.size} defaultValue="" onChange={event=>event.target.value&&bulkClassify(event.target.value)}><option value="">Classify selected…</option>{purposes.map(purpose=><option key={purpose} value={purpose}>{purpose.replaceAll("_"," ")}</option>)}</select></div>
         <div className="table-scroll"><table><thead><tr><th><input type="checkbox" aria-label="Select all" checked={active.rows.length>0&&selected.size===active.rows.length} onChange={event=>setSelected(event.target.checked?new Set(active.rows.map(row=>row.id)):new Set())}/></th><th>Date</th><th>Bank description</th><th>Classification</th><th>Evidence</th><th>Amount</th></tr></thead><tbody>{active.rows.map(row=><tr key={row.id}><td><input type="checkbox" checked={selected.has(row.id)} onChange={()=>setSelected(current=>{const next=new Set(current);if(next.has(row.id)){next.delete(row.id)}else{next.add(row.id)}return next})}/></td><td>{row.txn_date}</td><td className="strong">{row.description}</td><td><span className={`purpose-chip ${row.purpose}`}>{row.purpose.replaceAll("_"," ")}</span></td><td>{row.duplicate_of_id?<span className="duplicate-chip">Possible duplicate</span>:<span className="muted-cell">No concern</span>}</td><td className={Number(row.amount)>=0?"money in":"money out"}>{Number(row.amount)>=0?"+":"−"}₹{Math.abs(Number(row.amount)).toLocaleString("en-IN",{minimumFractionDigits:2})}</td></tr>)}</tbody></table></div>
-      </>}</div>
+      </>}</>}</div>
     </section>}
   </AppShell>;
 }

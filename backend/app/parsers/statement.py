@@ -17,8 +17,12 @@ class ParseError(Exception):
 def _detect_bank(text: str) -> str:
     lowered = text.lower()
     for needle, slug in (
-        ("hdfc bank", "hdfc"), ("icici bank", "icici"), ("state bank of india", "sbi"),
-        ("axis bank", "axis"), ("kotak mahindra", "kotak"), ("yes bank", "yes"),
+        ("hdfc bank", "hdfc"),
+        ("icici bank", "icici"),
+        ("state bank of india", "sbi"),
+        ("axis bank", "axis"),
+        ("kotak mahindra", "kotak"),
+        ("yes bank", "yes"),
     ):
         if needle in lowered:
             return slug
@@ -76,13 +80,15 @@ def _parse_table(rows: list[list[str]], bank_slug: str) -> ParsedStatement:
         reference = ""
         if reference_col is not None and reference_col < len(row):
             reference = row[reference_col].strip()
-        transactions.append(ParsedTransaction(
-            txn_date=txn_date,
-            description=" ".join(row[description_col].split()),
-            amount=amount,
-            balance=balance,
-            reference=reference,
-        ))
+        transactions.append(
+            ParsedTransaction(
+                txn_date=txn_date,
+                description=" ".join(row[description_col].split()),
+                amount=amount,
+                balance=balance,
+                reference=reference,
+            )
+        )
     if not transactions:
         raise ParseError("No transaction rows could be read from this statement.")
     transactions.sort(key=lambda transaction: transaction.txn_date)
@@ -95,6 +101,51 @@ def _parse_table(rows: list[list[str]], bank_slug: str) -> ParsedStatement:
     )
 
 
+def _parse_yes_credit_card(text: str) -> ParsedStatement:
+    details = text.split("Statement Details", 1)[-1]
+    starts = list(re.finditer(r"(?m)^(\d{2}/\d{2}/\d{4})\s+", details))
+    transactions = []
+    for index, match in enumerate(starts):
+        end = starts[index + 1].start() if index + 1 < len(starts) else len(details)
+        block = details[match.end() : end]
+        amounts = list(re.finditer(r"([\d,]+\.\d{2})\s+(Dr|Cr)\b", block, re.I))
+        if not amounts:
+            continue
+        amount_match = amounts[-1]
+        description = " ".join(block[: amount_match.start()].split())
+        if not description:
+            continue
+        reference_match = re.search(r"Ref No:\s*([A-Z0-9-]+)", description, re.I)
+        transactions.append(
+            ParsedTransaction(
+                txn_date=parse_date(match.group(1)),
+                description=description,
+                amount=parse_amount(f"{amount_match.group(1)} {amount_match.group(2)}"),
+                reference=reference_match.group(1) if reference_match else "",
+            )
+        )
+    if not transactions:
+        raise ParseError("No credit-card transaction rows could be read from this statement.")
+    period = re.search(
+        r"Statement Period:\s*.*?(\d{2}/\d{2}/\d{4})\s+To\s+(\d{2}/\d{2}/\d{4})",
+        text,
+        re.S,
+    )
+    account = re.search(r"Card Number\s+([0-9Xx]+)", text)
+    previous = re.search(r"Previous Balance\s*:\s*Rs\.\s*([\d,]+\.\d{2})\s*Dr", text, re.S)
+    total_due = re.search(r"Total Amount Due:.*?Rs\.\s*([\d,]+\.\d{2})", text, re.S)
+    return ParsedStatement(
+        transactions=transactions,
+        bank_slug="yes",
+        source_hint=account.group(1)[-8:] if account else "",
+        statement_kind="credit_card",
+        period_start=parse_date(period.group(1)) if period else transactions[0].txn_date,
+        period_end=parse_date(period.group(2)) if period else transactions[-1].txn_date,
+        opening_balance=-parse_amount(previous.group(1)) if previous else None,
+        closing_balance=-parse_amount(total_due.group(1)) if total_due else None,
+    )
+
+
 def parse_statement(path: Path, password: str | None = None) -> ParsedStatement:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
@@ -103,10 +154,12 @@ def parse_statement(path: Path, password: str | None = None) -> ParsedStatement:
                 text = "\n".join(page.extract_text() or "" for page in pdf.pages)
                 tables = [table for page in pdf.pages for table in (page.extract_tables() or [])]
         except Exception as exc:
-            message = str(exc).lower()
-            if "password" in message or "decrypt" in message:
+            message = f"{type(exc).__name__} {exc!s} {type(exc.__context__).__name__}".lower()
+            if "password" in message or "decrypt" in message or "pdfminerexception" in message:
                 raise ParseError("This PDF is password protected.") from exc
             raise ParseError("The PDF could not be opened.") from exc
+        if "yes bank" in text.lower() and "credit card statement" in text.lower():
+            return _parse_yes_credit_card(text)
         rows = [row for table in tables for row in table]
         return _parse_table([[cell or "" for cell in row] for row in rows], _detect_bank(text))
     if suffix in {".csv", ".txt"}:
