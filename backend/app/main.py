@@ -1,6 +1,6 @@
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -90,9 +90,25 @@ def update_theme(
 
 @app.get("/accounts", response_model=list[AccountResponse])
 def accounts(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return db.scalars(
-        select(Account).where(Account.user_id == user.id).order_by(Account.name)
+    rows = db.execute(
+        select(
+            Account,
+            (Account.opening_balance + func.coalesce(func.sum(Transaction.amount), 0)).label(
+                "current_balance"
+            ),
+            func.count(func.distinct(Transaction.statement_import_id)).label("statement_count"),
+        )
+        .outerjoin(Transaction, Transaction.account_id == Account.id)
+        .where(Account.user_id == user.id)
+        .group_by(Account.id)
+        .order_by(Account.name)
     ).all()
+    return [
+        AccountResponse.model_validate(account).model_copy(
+            update={"current_balance": balance, "statement_count": statement_count}
+        )
+        for account, balance, statement_count in rows
+    ]
 
 
 @app.get("/transactions", response_model=list[TransactionResponse])

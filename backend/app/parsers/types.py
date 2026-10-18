@@ -16,6 +16,7 @@ class ParsedTransaction:
 class ParsedStatement:
     transactions: list[ParsedTransaction]
     bank_slug: str = "unknown"
+    account_name: str = ""
     source_hint: str = ""
     statement_kind: str = "bank"
     period_start: date | None = None

@@ -95,6 +95,7 @@ class StatementImport(TimestampMixin, Base):
     storage_key: Mapped[str] = mapped_column(String(255))
     status: Mapped[ImportStatus] = mapped_column(Enum(ImportStatus), default=ImportStatus.UPLOADED)
     bank_slug: Mapped[str] = mapped_column(String(40), default="")
+    detected_account_name: Mapped[str] = mapped_column(String(120), default="")
     account_hint: Mapped[str] = mapped_column(String(32), default="")
     statement_kind: Mapped[str] = mapped_column(String(24), default="bank")
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)

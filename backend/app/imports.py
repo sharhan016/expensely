@@ -50,6 +50,7 @@ def _owned_import(db: Session, import_id: uuid.UUID, user_id: int) -> StatementI
 
 def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int) -> None:
     statement.bank_slug = parsed.bank_slug
+    statement.detected_account_name = parsed.account_name
     statement.account_hint = parsed.source_hint
     statement.statement_kind = parsed.statement_kind
     statement.period_start = parsed.period_start
@@ -57,12 +58,14 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
     statement.opening_balance = parsed.opening_balance
     statement.closing_balance = parsed.closing_balance
     if parsed.source_hint:
+        last_four = parsed.source_hint[-4:]
         statement.account_id = db.scalar(
             select(Account.id).where(
                 Account.user_id == user_id,
                 Account.bank_slug == parsed.bank_slug,
-                Account.account_hint == parsed.source_hint,
-            )
+                Account.kind == parsed.statement_kind,
+                Account.account_hint.endswith(last_four),
+            ).order_by(Account.id)
         )
     if parsed.period_start and parsed.period_end and (statement.account_id or parsed.source_hint):
         identity = (
@@ -304,17 +307,23 @@ def confirm_import(
             select(Account).where(Account.id == statement.account_id, Account.user_id == user.id)
         )
     elif statement.account_hint:
+        last_four = statement.account_hint[-4:]
         account = db.scalar(
             select(Account).where(
                 Account.user_id == user.id,
                 Account.bank_slug == statement.bank_slug,
-                Account.account_hint == statement.account_hint,
-            )
+                Account.kind == statement.statement_kind,
+                Account.account_hint.endswith(last_four),
+            ).order_by(Account.id)
         )
     if account is None:
         account = Account(
             user_id=user.id,
-            name=payload.account_name or f"{statement.bank_slug.title()} account",
+            name=(
+                payload.account_name
+                or statement.detected_account_name
+                or f"{statement.bank_slug.title()} account"
+            ),
             bank_slug=statement.bank_slug,
             account_hint=statement.account_hint or uuid.uuid4().hex[:8],
             kind=statement.statement_kind,

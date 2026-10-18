@@ -46,6 +46,8 @@ def test_unsupported_file_has_actionable_error(tmp_path):
 
 def test_yes_credit_card_text_normalises_spends_and_payments():
     text = """Credit Card Statement YES BANK
+YES BANK Uni RuPay
+Statement for YES BANK Card Number XXXX XXXX XXXX 9405
 Statement Period: 17/09/2026 To 16/10/2026
 Previous Balance : Rs. 19,329.72 Dr
 Total Amount Due: Rs. 10,410.16
@@ -56,6 +58,8 @@ Date Transaction Details Merchant Category Amount (Rs.)
 """
     parsed = _parse_yes_credit_card(text)
     assert parsed.statement_kind == "credit_card"
+    assert parsed.account_name == "YES BANK Uni RuPay Credit Card"
+    assert parsed.source_hint.endswith("9405")
     assert parsed.opening_balance == Decimal("-19329.72")
     assert parsed.closing_balance == Decimal("-10410.16")
     assert [row.amount for row in parsed.transactions] == [

@@ -41,6 +41,8 @@ class AccountResponse(ORMModel):
     kind: str
     currency: str
     opening_balance: Decimal
+    current_balance: Decimal = Decimal("0")
+    statement_count: int = 0
 
 
 class PersonCreate(BaseModel):
@@ -110,6 +112,7 @@ class StatementImportResponse(ORMModel):
     original_filename: str
     status: ImportStatus
     bank_slug: str
+    detected_account_name: str
     account_hint: str
     statement_kind: str
     period_start: date | None

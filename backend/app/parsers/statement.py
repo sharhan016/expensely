@@ -131,13 +131,15 @@ def _parse_yes_credit_card(text: str) -> ParsedStatement:
         text,
         re.S,
     )
-    account = re.search(r"Card Number\s+([0-9Xx]+)", text)
+    account = re.search(r"Card Number\s+([0-9Xx\s]{8,})", text)
+    account_hint = re.sub(r"\s+", "", account.group(1))[-8:] if account else ""
     previous = re.search(r"Previous Balance\s*:\s*Rs\.\s*([\d,]+\.\d{2})\s*Dr", text, re.S)
     total_due = re.search(r"Total Amount Due:.*?Rs\.\s*([\d,]+\.\d{2})", text, re.S)
     return ParsedStatement(
         transactions=transactions,
         bank_slug="yes",
-        source_hint=account.group(1)[-8:] if account else "",
+        account_name="YES BANK Uni RuPay Credit Card",
+        source_hint=account_hint,
         statement_kind="credit_card",
         period_start=parse_date(period.group(1)) if period else transactions[0].txn_date,
         period_end=parse_date(period.group(2)) if period else transactions[-1].txn_date,
