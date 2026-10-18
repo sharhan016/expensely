@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Landmark, WalletCards, HandCoins, CircleAlert, ArrowUpRight, Minus, Equal } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import Link from "next/link";
 
 const activity = [
   ["31 Oct", "Salary credit", "HDFC Salary", "—", "+₹1,25,000"],
@@ -19,7 +20,7 @@ export default function Home() {
     <AppShell accent={accent} onAccent={setAccent} active="Home">
       <header className="page-head">
         <div><p className="kicker">31 October 2026</p><h1>Good morning, Jasmine.</h1><p>Your money, with everyone&apos;s share made explicit.</p></div>
-        <button className="primary">Import statements <ArrowUpRight size={15}/></button>
+        <Link className="primary" href="/imports">Import statements <ArrowUpRight size={15}/></Link>
       </header>
 
       <section className="fund-equation" aria-label="Available funds calculation">

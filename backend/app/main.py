@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.imports import router as imports_router
 from app.models import Account, Employer, Person, Transaction, User
 from app.schemas import (
     AccountResponse,
@@ -30,6 +31,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(imports_router)
 
 
 @app.get("/health")

@@ -1,9 +1,10 @@
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.models import Purpose
+from app.models import ImportStatus, Purpose
 
 
 class ORMModel(BaseModel):
@@ -84,3 +85,54 @@ class TransactionUpdate(BaseModel):
     employer_id: int | None = None
     trip_id: int | None = None
     notes: str | None = None
+
+
+class ImportRowResponse(ORMModel):
+    id: int
+    txn_date: date
+    description: str
+    amount: Decimal
+    balance: Decimal | None
+    reference: str
+    purpose: Purpose
+    confidence: str
+    duplicate_of_id: int | None
+    selected: bool
+
+
+class StatementImportResponse(ORMModel):
+    id: UUID
+    batch_id: UUID
+    original_filename: str
+    status: ImportStatus
+    bank_slug: str
+    account_hint: str
+    statement_kind: str
+    period_start: date | None
+    period_end: date | None
+    opening_balance: Decimal | None
+    closing_balance: Decimal | None
+    error_message: str
+    rows: list[ImportRowResponse] = []
+
+
+class ImportRowUpdate(BaseModel):
+    purpose: Purpose | None = None
+    selected: bool | None = None
+
+
+class ImportBulkUpdate(BaseModel):
+    row_ids: list[int]
+    purpose: Purpose | None = None
+    selected: bool | None = None
+
+
+class ImportConfirmRequest(BaseModel):
+    account_id: int | None = None
+    account_name: str | None = Field(default=None, max_length=120)
+
+
+class ImportConfirmResponse(BaseModel):
+    imported: int
+    skipped_duplicates: int
+    account_id: int

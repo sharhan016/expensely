@@ -25,6 +25,7 @@ npm-debug.log*
 # Private financial data
 /storage/
 /uploads/
+**/storage/
 *.local.pdf
 *.local.csv
 *.local.xls*
