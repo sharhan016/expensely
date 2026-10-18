@@ -10,7 +10,6 @@ from app.database import get_db
 from app.models import (
     Account,
     ClassificationRule,
-    Employer,
     ImportBatch,
     ImportRow,
     ImportStatus,
@@ -20,6 +19,7 @@ from app.models import (
     Transaction,
     User,
 )
+from app.ownership import validate_financial_associations
 from app.parsers import ParseError, parse_statement
 from app.schemas import (
     ImportBulkUpdate,
@@ -252,12 +252,22 @@ def update_import_row(
     row = next((item for item in statement.rows if item.id == row_id), None)
     if not row:
         raise HTTPException(status_code=404, detail="Import row not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    associations = validate_financial_associations(
+        db,
+        user_id=user.id,
+        purpose=changes.get("purpose", row.purpose),
+        person_id=changes.get("person_id", row.person_id),
+        employer_id=changes.get("employer_id", row.employer_id),
+        trip_id=changes.get("trip_id", row.trip_id),
+    )
+    changes.update(
+        person_id=associations.person_id,
+        employer_id=associations.employer_id,
+        trip_id=associations.trip_id,
+    )
+    for field, value in changes.items():
         setattr(row, field, value)
-    if row.purpose == Purpose.BUSINESS and row.employer_id is None:
-        row.employer_id = db.scalar(
-            select(Employer.id).where(Employer.user_id == user.id, Employer.is_default.is_(True))
-        )
     db.commit()
     db.refresh(row)
     return row
@@ -274,15 +284,27 @@ def bulk_update_import_rows(
     selected_rows = [row for row in statement.rows if row.id in set(payload.row_ids)]
     if len(selected_rows) != len(set(payload.row_ids)):
         raise HTTPException(status_code=404, detail="One or more import rows were not found")
+    changes = payload.model_dump(exclude={"row_ids"}, exclude_unset=True)
+    validated = []
     for row in selected_rows:
-        for field, value in payload.model_dump(exclude={"row_ids"}, exclude_unset=True).items():
+        associations = validate_financial_associations(
+            db,
+            user_id=user.id,
+            purpose=changes.get("purpose", row.purpose),
+            person_id=changes.get("person_id", row.person_id),
+            employer_id=changes.get("employer_id", row.employer_id),
+            trip_id=changes.get("trip_id", row.trip_id),
+        )
+        validated.append((row, associations))
+    for row, associations in validated:
+        row_changes = {
+            **changes,
+            "person_id": associations.person_id,
+            "employer_id": associations.employer_id,
+            "trip_id": associations.trip_id,
+        }
+        for field, value in row_changes.items():
             setattr(row, field, value)
-        if row.purpose == Purpose.BUSINESS and row.employer_id is None:
-            row.employer_id = db.scalar(
-                select(Employer.id).where(
-                    Employer.user_id == user.id, Employer.is_default.is_(True)
-                )
-            )
     db.commit()
     return selected_rows
 
@@ -297,6 +319,18 @@ def confirm_import(
     statement = _owned_import(db, import_id, user.id)
     if statement.status != ImportStatus.READY:
         raise HTTPException(status_code=409, detail="Only reviewed statements can be confirmed")
+    selected_rows = [row for row in statement.rows if row.selected]
+    row_associations = {
+        row.id: validate_financial_associations(
+            db,
+            user_id=user.id,
+            purpose=row.purpose,
+            person_id=row.person_id,
+            employer_id=row.employer_id,
+            trip_id=row.trip_id,
+        )
+        for row in selected_rows
+    }
     account = None
     if payload.account_id:
         account = db.scalar(
@@ -340,6 +374,7 @@ def confirm_import(
         if not row.selected:
             skipped += int(row.duplicate_of_id is not None)
             continue
+        associations = row_associations[row.id]
         fingerprint = dedupe_hash(
             account.id, row.txn_date, row.amount, row.description, row.reference
         )
@@ -362,9 +397,9 @@ def confirm_import(
                 reference=row.reference,
                 dedupe_hash=fingerprint,
                 purpose=row.purpose,
-                person_id=row.person_id,
-                employer_id=row.employer_id,
-                trip_id=row.trip_id,
+                person_id=associations.person_id,
+                employer_id=associations.employer_id,
+                trip_id=associations.trip_id,
             )
         )
         imported += 1

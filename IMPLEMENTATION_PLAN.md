@@ -226,6 +226,15 @@ Definition of done:
 
 - All association endpoints pass ownership matrices; database constraints match API policy; no cross-user financial link is possible.
 
+**Status: In progress — 18 October 2026.** A centralized association policy now rejects
+foreign person, employer, and trip references; applies the documented required-person and
+required-employer rules; and is enforced by transaction edits, import-row edits, atomic bulk
+edits, rule writes, and import confirmation. Existing account/import/transaction/trip primary
+lookups were verified as owner-scoped. The complete quality gate passes with 26 Pytest tests,
+including 13 new ownership-policy/API tests, plus the existing frontend, migration, build, and
+Chromium checks. Outstanding: the PostgreSQL default-employer uniqueness migration,
+concurrency integration test, and owned-association Playwright path require migration approval.
+
 #### Slice 1.2: Separate immutable movement from editable meaning
 
 **Depends on:** Slice 1.1 and approved finalization/audit semantics  

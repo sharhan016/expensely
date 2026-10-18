@@ -19,6 +19,7 @@ from app.models import (
     TripTransactionExclusion,
     User,
 )
+from app.ownership import validate_financial_associations
 from app.schemas import (
     ReconciliationCreate,
     RuleCreate,
@@ -277,7 +278,16 @@ def rules(db: Session = Depends(get_db), user: User = Depends(current_user)):
 def create_rule(
     payload: RuleCreate, db: Session = Depends(get_db), user: User = Depends(current_user)
 ):
-    rule = ClassificationRule(user_id=user.id, **payload.model_dump())
+    values = payload.model_dump()
+    associations = validate_financial_associations(
+        db,
+        user_id=user.id,
+        purpose=payload.purpose,
+        person_id=payload.person_id,
+        employer_id=payload.employer_id,
+    )
+    values.update(person_id=associations.person_id, employer_id=associations.employer_id)
+    rule = ClassificationRule(user_id=user.id, **values)
     db.add(rule)
     db.commit()
     db.refresh(rule)
@@ -298,7 +308,16 @@ def update_rule(
     )
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    associations = validate_financial_associations(
+        db,
+        user_id=user.id,
+        purpose=changes.get("purpose", rule.purpose),
+        person_id=changes.get("person_id", rule.person_id),
+        employer_id=changes.get("employer_id", rule.employer_id),
+    )
+    changes.update(person_id=associations.person_id, employer_id=associations.employer_id)
+    for field, value in changes.items():
         setattr(rule, field, value)
     db.commit()
     db.refresh(rule)

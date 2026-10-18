@@ -8,6 +8,7 @@ from app.database import get_db
 from app.finance import router as finance_router
 from app.imports import router as imports_router
 from app.models import Account, Employer, Person, Reconciliation, Transaction, User
+from app.ownership import validate_financial_associations
 from app.schemas import (
     AccountResponse,
     EmployerCreate,
@@ -133,12 +134,23 @@ def update_transaction(
     )
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    purpose = changes.get("purpose", transaction.purpose)
+    associations = validate_financial_associations(
+        db,
+        user_id=user.id,
+        purpose=purpose,
+        person_id=changes.get("person_id", transaction.person_id),
+        employer_id=changes.get("employer_id", transaction.employer_id),
+        trip_id=changes.get("trip_id", transaction.trip_id),
+    )
+    changes.update(
+        person_id=associations.person_id,
+        employer_id=associations.employer_id,
+        trip_id=associations.trip_id,
+    )
+    for field, value in changes.items():
         setattr(transaction, field, value)
-    if transaction.purpose.value == "business" and transaction.employer_id is None:
-        transaction.employer_id = db.scalar(
-            select(Employer.id).where(Employer.user_id == user.id, Employer.is_default.is_(True))
-        )
     for reconciliation in db.scalars(
         select(Reconciliation).where(
             Reconciliation.user_id == user.id,
