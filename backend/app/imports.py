@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import (
     Account,
     ClassificationRule,
+    Employer,
     ImportBatch,
     ImportRow,
     ImportStatus,
@@ -91,6 +92,8 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
                 duplicate_of_id=duplicate,
                 selected=duplicate is None,
                 purpose=matched_rule.purpose if matched_rule else Purpose.OTHER,
+                person_id=matched_rule.person_id if matched_rule else None,
+                employer_id=matched_rule.employer_id if matched_rule else None,
                 confidence="confident" if matched_rule else "unresolved",
             )
         )
@@ -201,6 +204,10 @@ def update_import_row(
         raise HTTPException(status_code=404, detail="Import row not found")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
+    if row.purpose == Purpose.BUSINESS and row.employer_id is None:
+        row.employer_id = db.scalar(
+            select(Employer.id).where(Employer.user_id == user.id, Employer.is_default.is_(True))
+        )
     db.commit()
     db.refresh(row)
     return row
@@ -220,6 +227,12 @@ def bulk_update_import_rows(
     for row in selected_rows:
         for field, value in payload.model_dump(exclude={"row_ids"}, exclude_unset=True).items():
             setattr(row, field, value)
+        if row.purpose == Purpose.BUSINESS and row.employer_id is None:
+            row.employer_id = db.scalar(
+                select(Employer.id).where(
+                    Employer.user_id == user.id, Employer.is_default.is_(True)
+                )
+            )
     db.commit()
     return selected_rows
 
@@ -279,6 +292,9 @@ def confirm_import(
                 reference=row.reference,
                 dedupe_hash=fingerprint,
                 purpose=row.purpose,
+                person_id=row.person_id,
+                employer_id=row.employer_id,
+                trip_id=row.trip_id,
             )
         )
         imported += 1

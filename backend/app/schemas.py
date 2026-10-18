@@ -95,6 +95,9 @@ class ImportRowResponse(ORMModel):
     balance: Decimal | None
     reference: str
     purpose: Purpose
+    person_id: int | None
+    employer_id: int | None
+    trip_id: int | None
     confidence: str
     duplicate_of_id: int | None
     selected: bool
@@ -119,12 +122,18 @@ class StatementImportResponse(ORMModel):
 class ImportRowUpdate(BaseModel):
     purpose: Purpose | None = None
     selected: bool | None = None
+    person_id: int | None = None
+    employer_id: int | None = None
+    trip_id: int | None = None
 
 
 class ImportBulkUpdate(BaseModel):
     row_ids: list[int]
     purpose: Purpose | None = None
     selected: bool | None = None
+    person_id: int | None = None
+    employer_id: int | None = None
+    trip_id: int | None = None
 
 
 class ImportConfirmRequest(BaseModel):

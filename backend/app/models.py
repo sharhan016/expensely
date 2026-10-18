@@ -117,6 +117,9 @@ class ImportRow(Base):
     balance: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     reference: Mapped[str] = mapped_column(String(120), default="")
     purpose: Mapped[Purpose] = mapped_column(Enum(Purpose), default=Purpose.OTHER)
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id"), nullable=True)
+    employer_id: Mapped[int | None] = mapped_column(ForeignKey("employers.id"), nullable=True)
+    trip_id: Mapped[int | None] = mapped_column(ForeignKey("trips.id"), nullable=True)
     confidence: Mapped[str] = mapped_column(String(16), default="unresolved")
     duplicate_of_id: Mapped[int | None] = mapped_column(
         ForeignKey("transactions.id"), nullable=True
