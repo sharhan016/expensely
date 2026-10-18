@@ -22,6 +22,8 @@ node_modules/
 out/
 coverage/
 npm-debug.log*
+playwright-report/
+test-results/
 
 # Private financial data
 /storage/

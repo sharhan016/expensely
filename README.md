@@ -49,10 +49,21 @@ the command securely prompts for a password and never embeds one in the reposito
 
 ## Verification
 
+The complete quality gate uses a disposable PostgreSQL 16 test container. It
+checks formatting and lint, TypeScript, backend and frontend tests, Alembic
+upgrade/downgrade/re-upgrade behavior, the production frontend build, and the
+Playwright registration/import/ledger workflow.
+
 ```bash
-cd backend && uv run ruff check app tests && uv run pytest -q
-cd frontend && npm run lint && npm run build
+make setup
+make verify
+make test-db-down
 ```
+
+`make verify` is the same gate used in CI. Browser traces, screenshots, and
+videos are retained under `frontend/test-results/` when an end-to-end test
+fails. Use `make lint`, `make test`, `make build`, or `make e2e` for focused
+local checks; `make test-db-reset` must run before migration or browser checks.
 
 ## Current limitations
 

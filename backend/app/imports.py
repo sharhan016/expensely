@@ -60,12 +60,14 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
     if parsed.source_hint:
         last_four = parsed.source_hint[-4:]
         statement.account_id = db.scalar(
-            select(Account.id).where(
+            select(Account.id)
+            .where(
                 Account.user_id == user_id,
                 Account.bank_slug == parsed.bank_slug,
                 Account.kind == parsed.statement_kind,
                 Account.account_hint.endswith(last_four),
-            ).order_by(Account.id)
+            )
+            .order_by(Account.id)
         )
     if parsed.period_start and parsed.period_end and (statement.account_id or parsed.source_hint):
         identity = (
@@ -309,12 +311,14 @@ def confirm_import(
     elif statement.account_hint:
         last_four = statement.account_hint[-4:]
         account = db.scalar(
-            select(Account).where(
+            select(Account)
+            .where(
                 Account.user_id == user.id,
                 Account.bank_slug == statement.bank_slug,
                 Account.kind == statement.statement_kind,
                 Account.account_hint.endswith(last_four),
-            ).order_by(Account.id)
+            )
+            .order_by(Account.id)
         )
     if account is None:
         account = Account(

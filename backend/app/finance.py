@@ -183,9 +183,7 @@ def create_trip(
 
 
 @router.get("/trips/{trip_id}")
-def trip_detail(
-    trip_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)
-):
+def trip_detail(trip_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
     trip = db.scalar(select(Trip).where(Trip.id == trip_id, Trip.user_id == user.id))
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
@@ -236,9 +234,7 @@ def decide_trip_transaction(
 ):
     trip = db.scalar(select(Trip).where(Trip.id == trip_id, Trip.user_id == user.id))
     transaction = db.scalar(
-        select(Transaction).where(
-            Transaction.id == transaction_id, Transaction.user_id == user.id
-        )
+        select(Transaction).where(Transaction.id == transaction_id, Transaction.user_id == user.id)
     )
     if not trip or not transaction:
         raise HTTPException(status_code=404, detail="Trip or transaction not found")
