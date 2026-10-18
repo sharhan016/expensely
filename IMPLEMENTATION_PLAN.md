@@ -180,6 +180,16 @@ Definition of done:
 
 - CI and local commands pass from a clean checkout; failures produce actionable artifacts; no feature behavior changes.
 
+**Status: Complete — 18 October 2026.** The baseline was separated into documentation,
+approved interface, and quality-gate commits. From a fresh detached worktree, `make setup`
+completed and `make verify` passed Ruff, ESLint, TypeScript, 13 Pytest tests, one Vitest
+test, Alembic upgrade/downgrade/re-upgrade, the production build, and one Chromium
+end-to-end workflow. CI runs the same command and retains Playwright artifacts on failure.
+No new product decisions were inferred; the unresolved rules below remain explicit blockers
+for their dependent slices. Baseline warnings: 25 uses of deprecated naive UTC timestamps
+and eight reported npm dependency vulnerabilities (one moderate, five high, two critical)
+require controlled follow-up rather than an unreviewed forced upgrade.
+
 ### Phase 1 — Ownership and immutable-ledger foundation
 
 #### Slice 1.1: Authorization boundary for every association
