@@ -14,6 +14,7 @@ from app.main import app
 from app.models import (
     Account,
     ClassificationRule,
+    Counterparty,
     Employer,
     ImportBatch,
     ImportRow,
@@ -53,6 +54,8 @@ def api_context():
     )
     owner_person = Person(user_id=owner.id, name="Owner person")
     stranger_person = Person(user_id=stranger.id, name="Stranger person")
+    owner_counterparty = Counterparty(user_id=owner.id, display_name="Owner shop")
+    stranger_counterparty = Counterparty(user_id=stranger.id, display_name="Stranger shop")
     owner_employer = Employer(user_id=owner.id, name="Owner employer", is_default=True)
     stranger_employer = Employer(user_id=stranger.id, name="Stranger employer", is_default=True)
     owner_trip = Trip(
@@ -73,6 +76,8 @@ def api_context():
             stranger_account,
             owner_person,
             stranger_person,
+            owner_counterparty,
+            stranger_counterparty,
             owner_employer,
             stranger_employer,
             owner_trip,
@@ -144,6 +149,8 @@ def api_context():
             "stranger_account": stranger_account,
             "owner_person": owner_person,
             "stranger_person": stranger_person,
+            "owner_counterparty": owner_counterparty,
+            "stranger_counterparty": stranger_counterparty,
             "owner_employer": owner_employer,
             "stranger_employer": stranger_employer,
             "owner_trip": owner_trip,
@@ -164,6 +171,7 @@ def api_context():
         ("person_id", "stranger_person"),
         ("employer_id", "stranger_employer"),
         ("trip_id", "stranger_trip"),
+        ("counterparty_id", "stranger_counterparty"),
     ],
 )
 def test_transaction_update_rejects_foreign_associations(api_context, field, foreign_key):
@@ -175,7 +183,10 @@ def test_transaction_update_rejects_foreign_associations(api_context, field, for
 
     assert response.status_code == 404
     context["db"].refresh(context["transaction"])
-    assert getattr(context["transaction"], field) is None
+    if field == "counterparty_id":
+        assert context["transaction"].meaning is None
+    else:
+        assert getattr(context["transaction"], field) is None
 
 
 @pytest.mark.parametrize(
@@ -184,6 +195,7 @@ def test_transaction_update_rejects_foreign_associations(api_context, field, for
         ("person_id", "stranger_person"),
         ("employer_id", "stranger_employer"),
         ("trip_id", "stranger_trip"),
+        ("counterparty_id", "stranger_counterparty"),
     ],
 )
 def test_import_row_update_rejects_foreign_associations(api_context, field, foreign_key):
@@ -219,7 +231,10 @@ def test_bulk_import_update_is_atomic_when_association_is_foreign(api_context):
 
 @pytest.mark.parametrize(
     ("field", "foreign_key"),
-    [("person_id", "stranger_person"), ("employer_id", "stranger_employer")],
+    [
+        ("person_id", "stranger_person"),
+        ("employer_id", "stranger_employer"),
+    ],
 )
 def test_rule_create_and_update_reject_foreign_associations(api_context, field, foreign_key):
     context = api_context
@@ -308,6 +323,31 @@ def test_unknown_bank_can_be_confirmed_after_explicit_identification(api_context
     assert created.name == "Daily account"
     context["db"].refresh(context["statement"])
     assert context["statement"].bank_slug == "yes"
+
+
+def test_statement_balance_difference_requires_explicit_confirmation(api_context):
+    context = api_context
+    context["statement"].bank_slug = context["owner_account"].bank_slug
+    context["statement"].reconciliation_status = "difference"
+    context["statement"].reconciliation_difference = Decimal("12.50")
+    context["db"].commit()
+
+    blocked = context["client"].post(
+        f"/imports/{context['statement'].id}/confirm",
+        json={"account_id": context["owner_account"].id},
+    )
+    assert blocked.status_code == 409
+    assert "explicitly confirm" in blocked.json()["detail"]
+    assert context["statement"].status == ImportStatus.READY
+
+    accepted = context["client"].post(
+        f"/imports/{context['statement'].id}/confirm",
+        json={
+            "account_id": context["owner_account"].id,
+            "allow_reconciliation_difference": True,
+        },
+    )
+    assert accepted.status_code == 200
 
 
 def test_statement_parser_evidence_survives_staging_and_api_response(api_context):
@@ -494,3 +534,16 @@ def test_transaction_history_does_not_reveal_foreign_transaction(api_context):
     context = api_context
     response = context["client"].get(f"/transactions/{context['stranger_transaction'].id}/history")
     assert response.status_code == 404
+
+
+def test_counterparty_routes_do_not_reveal_foreign_flows(api_context):
+    context = api_context
+
+    detail = context["client"].get(f"/counterparties/{context['stranger_counterparty'].id}")
+    update = context["client"].patch(
+        f"/counterparties/{context['stranger_counterparty'].id}",
+        json={"display_name": "Not allowed"},
+    )
+
+    assert detail.status_code == 404
+    assert update.status_code == 404

@@ -65,6 +65,7 @@ def test_finalized_meaning_correction_is_audited_without_changing_bank_evidence(
                 person_id=None,
                 employer_id=None,
                 trip_id=None,
+                counterparty_id=None,
                 notes="Corrected",
                 expected_version=1,
             )
@@ -78,6 +79,7 @@ def test_finalized_meaning_correction_is_audited_without_changing_bank_evidence(
             person_id=None,
             employer_id=None,
             trip_id=None,
+            counterparty_id=None,
             notes="Corrected",
             expected_version=1,
             reason="Receipt confirms this was personal",
@@ -107,6 +109,7 @@ def test_finalized_meaning_correction_is_audited_without_changing_bank_evidence(
                 person_id=None,
                 employer_id=None,
                 trip_id=None,
+                counterparty_id=None,
                 notes="Stale edit",
                 expected_version=1,
                 reason="Attempted stale correction",
@@ -149,6 +152,7 @@ def test_noop_meaning_update_does_not_create_audit_noise():
             person_id=None,
             employer_id=None,
             trip_id=None,
+            counterparty_id=None,
             notes="",
             expected_version=1,
         )

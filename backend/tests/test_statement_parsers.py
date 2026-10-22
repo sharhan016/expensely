@@ -30,6 +30,7 @@ def test_csv_statement_extracts_signed_rows(tmp_path):
     parsed = parse_statement(statement)
     assert parsed.bank_slug == "hdfc"
     assert parsed.period_start.isoformat() == "2024-04-01"
+    assert parsed.opening_balance == Decimal("100000.00")
     assert parsed.closing_balance == Decimal("149840.00")
     assert [row.amount for row in parsed.transactions] == [
         Decimal("-160.00"),
@@ -113,6 +114,7 @@ def test_yes_deposit_statement_detects_instrument_from_document_evidence(
     assert parsed.source_hint.endswith("9405")
     assert parsed.instrument_confidence == "high"
     assert parsed.parser_name == "yes_deposit_table"
+    assert parsed.opening_balance == Decimal("100000.00")
 
 
 def test_yes_deposit_statement_does_not_guess_instrument_without_evidence(tmp_path):
