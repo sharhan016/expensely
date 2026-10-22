@@ -259,6 +259,27 @@ class CounterpartyUpdate(BaseModel):
     default_purpose: Purpose | None = None
 
 
+class CounterpartyMeaningProposalCreate(BaseModel):
+    purpose: Purpose
+
+
+class AgentActionDecision(BaseModel):
+    status: str = Field(pattern=r"^(accepted|rejected|reverted)$")
+
+
+class AgentActionResponse(ORMModel):
+    id: int
+    action_type: str
+    target_type: str
+    target_id: str
+    status: str
+    proposal: dict
+    evidence: dict
+    decision_source: str
+    created_at: datetime
+    resolved_at: datetime | None
+
+
 class CounterpartySummary(ORMModel):
     id: int
     display_name: str

@@ -6,9 +6,11 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.models import Counterparty, Purpose, Transaction, TransactionMeaning, User
+from app.models import AgentAction, Counterparty, Purpose, Transaction, TransactionMeaning, User
 from app.schemas import (
+    AgentActionResponse,
     CounterpartyDetail,
+    CounterpartyMeaningProposalCreate,
     CounterpartyPurposeTotal,
     CounterpartySummary,
     CounterpartyTransaction,
@@ -161,3 +163,82 @@ def update_counterparty(
     db.commit()
     row = db.execute(_summary_query(user.id).where(Counterparty.id == counterparty.id)).one()
     return _to_summary(row)
+
+
+@router.post(
+    "/{counterparty_id}/meaning-proposals",
+    response_model=AgentActionResponse,
+    status_code=201,
+)
+def create_meaning_proposal(
+    counterparty_id: int,
+    payload: CounterpartyMeaningProposalCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    counterparty = db.scalar(
+        select(Counterparty).where(
+            Counterparty.id == counterparty_id,
+            Counterparty.user_id == user.id,
+        )
+    )
+    if not counterparty:
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+    if payload.purpose not in _SAFE_DEFAULT_PURPOSES:
+        raise HTTPException(
+            status_code=422,
+            detail="Obligations and transfers must be reviewed one movement at a time",
+        )
+    rows = db.execute(
+        select(Transaction, TransactionMeaning)
+        .join(TransactionMeaning, TransactionMeaning.transaction_id == Transaction.id)
+        .where(
+            Transaction.user_id == user.id,
+            TransactionMeaning.user_id == user.id,
+            TransactionMeaning.counterparty_id == counterparty.id,
+            TransactionMeaning.purpose == Purpose.OTHER,
+        )
+        .order_by(Transaction.txn_date, Transaction.id)
+    ).all()
+    if not rows:
+        raise HTTPException(status_code=409, detail="This flow has no unresolved past movements")
+    transaction_ids = [transaction.id for transaction, _ in rows]
+    versions = {str(transaction.id): meaning.version for transaction, meaning in rows}
+    existing = db.scalars(
+        select(AgentAction).where(
+            AgentAction.user_id == user.id,
+            AgentAction.action_type == "apply_counterparty_purpose",
+            AgentAction.target_type == "counterparty",
+            AgentAction.target_id == str(counterparty.id),
+            AgentAction.status == "proposed",
+        )
+    ).all()
+    for action in existing:
+        if (
+            action.proposal.get("purpose") == payload.purpose.value
+            and action.proposal.get("transaction_ids") == transaction_ids
+        ):
+            return action
+    action = AgentAction(
+        user_id=user.id,
+        action_type="apply_counterparty_purpose",
+        target_type="counterparty",
+        target_id=str(counterparty.id),
+        status="proposed",
+        proposal={
+            "purpose": payload.purpose.value,
+            "transaction_ids": transaction_ids,
+            "versions": versions,
+            "transaction_count": len(rows),
+            "total": str(sum((abs(transaction.amount) for transaction, _ in rows), Decimal("0"))),
+        },
+        evidence={
+            "counterparty_confirmed": counterparty.is_confirmed,
+            "source": "explicit_retrospective_review",
+        },
+        decision_source="assistant_proposal",
+    )
+    db.add(action)
+    db.commit()
+    db.refresh(action)
+    return action

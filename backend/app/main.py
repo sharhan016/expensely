@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.action_routes import router as action_router
 from app.assistant_routes import router as assistant_router
 from app.config import settings
 from app.counterparty_routes import router as counterparty_router
@@ -56,6 +57,7 @@ app.include_router(counterparty_router)
 app.include_router(group_router)
 app.include_router(transfer_router)
 app.include_router(assistant_router)
+app.include_router(action_router)
 
 
 def _transaction_response(transaction: Transaction) -> TransactionResponse:
