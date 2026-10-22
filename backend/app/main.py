@@ -52,6 +52,7 @@ from app.schemas import (
 from app.security import create_session, current_user, hash_password, verify_password
 from app.services import person_balances
 from app.transfer_routes import router as transfer_router
+from app.workflow.routes import router as workflow_router
 
 app = FastAPI(title="Expense Analyzer API", version="0.1.0")
 app.add_middleware(
@@ -94,6 +95,7 @@ app.include_router(transfer_router)
 app.include_router(assistant_router)
 app.include_router(coverage_router)
 app.include_router(cash_router)
+app.include_router(workflow_router)
 app.include_router(action_router)
 
 

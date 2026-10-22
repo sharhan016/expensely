@@ -23,6 +23,7 @@ from app.coverage import (
 )
 from app.models import (
     Account,
+    AcknowledgedGap,
     CoverageGapUnbridge,
     ImportStatus,
     Reconciliation,
@@ -252,8 +253,18 @@ def account_entry(db: Session, account: Account) -> AccountEntry:
             )
         )
     )
+    acknowledged = frozenset(
+        (item.gap_start, item.gap_end)
+        for item in db.scalars(
+            select(AcknowledgedGap).where(
+                AcknowledgedGap.user_id == account.user_id,
+                AcknowledgedGap.account_id == account.id,
+            )
+        )
+    )
     coverage = compute_coverage(
         account_spans(db, account),
+        acknowledged=acknowledged,
         records_start=account.records_start,
         anchor_opening=account.records_opening_balance,
         unbridged=unbridged,
@@ -336,7 +347,8 @@ def _banner(entries: list[AccountEntry], overall, today: date) -> str:
             else f"{date_label(problem.start)} to {date_label(problem.end)}"
         )
         text += f" Next problem ({laggard.name}): {problem.kind.replace('_', ' ')} at {span}."
-    return text
+    # Card statements have no closing balance to check yet; say so rather than imply they are.
+    return f"{text} Credit cards are not checked yet."
 
 
 def coverage_sentence(db: Session, user_id: int, *, today: date | None = None) -> str:

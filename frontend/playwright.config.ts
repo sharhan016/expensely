@@ -1,4 +1,7 @@
+import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+
+const restartMarker = path.resolve(process.cwd(), "tests/e2e/.auth/restart-backend");
 
 const testDatabaseUrl =
   process.env.TEST_DATABASE_URL ??
@@ -31,7 +34,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `cd ../backend && DATABASE_URL="${testDatabaseUrl}" FRONTEND_ORIGIN="http://127.0.0.1:3100" .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 18000`,
+      command: `cd ../backend && DATABASE_URL="${testDatabaseUrl}" FRONTEND_ORIGIN="http://127.0.0.1:3100" E2E_RESTART_MARKER="${restartMarker}" .venv/bin/python scripts/e2e_supervisor.py`,
       url: "http://127.0.0.1:18000/health",
       reuseExistingServer: false,
       timeout: 30_000,

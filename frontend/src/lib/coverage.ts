@@ -24,6 +24,7 @@ export const KIND_LABELS: Record<string, string> = {
   unverifiable: "Covered, but cannot be checked",
   unverified: "Needs a re-check",
   invalidated: "Changed after it was checked",
+  acknowledged: "You said these dates are not needed; they are not counted as checked",
   period_mismatch: "Statement adds up, but other movements in these dates do not",
 };
 

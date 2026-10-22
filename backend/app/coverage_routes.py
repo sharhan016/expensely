@@ -12,7 +12,7 @@ from app.coverage_service import (
     recompute_reconciliations,
 )
 from app.database import get_db
-from app.models import Account, CoverageGapUnbridge, User
+from app.models import Account, AcknowledgedGap, CoverageGapUnbridge, User
 from app.security import current_user
 
 router = APIRouter(prefix="/coverage", tags=["statement coverage"])
@@ -124,6 +124,27 @@ def rebridge_gap(
             CoverageGapUnbridge.account_id == account.id,
             CoverageGapUnbridge.gap_start == gap_start,
             CoverageGapUnbridge.gap_end == gap_end,
+        )
+    )
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.delete("/accounts/{account_id}/acknowledged-gaps", status_code=204)
+def take_back_acknowledged_gap(
+    account_id: int,
+    gap_start: date = Query(),
+    gap_end: date = Query(),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    account = _owned_account(db, account_id, user.id)
+    db.execute(
+        delete(AcknowledgedGap).where(
+            AcknowledgedGap.user_id == user.id,
+            AcknowledgedGap.account_id == account.id,
+            AcknowledgedGap.gap_start == gap_start,
+            AcknowledgedGap.gap_end == gap_end,
         )
     )
     db.commit()

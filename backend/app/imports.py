@@ -384,6 +384,13 @@ def upload_statements(
     return [_owned_import(db, item.id, user.id) for item in results]
 
 
+def unlock_statement(db: Session, statement: StatementImport, password: str, user_id: int) -> None:
+    """Parse a protected PDF with a request-scoped password. The password is never stored."""
+    parsed = parse_statement(settings.upload_dir / statement.storage_key, password=password)
+    _stage_parsed(db, statement, parsed, user_id)
+    db.commit()
+
+
 @router.post("/{import_id}/unlock", response_model=StatementImportResponse)
 def unlock_pdf(
     import_id: uuid.UUID,
@@ -395,12 +402,7 @@ def unlock_pdf(
     if statement.status != ImportStatus.PASSWORD_REQUIRED:
         raise HTTPException(status_code=409, detail="This statement is not waiting for a password")
     try:
-        parsed = parse_statement(
-            settings.upload_dir / statement.storage_key,
-            password=payload.password.get_secret_value(),
-        )
-        _stage_parsed(db, statement, parsed, user.id)
-        db.commit()
+        unlock_statement(db, statement, payload.password.get_secret_value(), user.id)
     except ParseError as exc:
         raise HTTPException(status_code=422, detail="The password did not unlock this PDF") from exc
     return _owned_import(db, statement.id, user.id)

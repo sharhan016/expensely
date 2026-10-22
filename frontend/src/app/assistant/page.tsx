@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, Bot, FileText, Paperclip, Send, Sparkles, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { CoverageBanner } from "@/components/CoverageBanner";
+import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 type MessageContext = {
   kind?: string;
@@ -40,6 +41,7 @@ export default function AssistantPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [panelKey, setPanelKey] = useState(0);
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const feed = useRef<HTMLDivElement>(null);
@@ -80,6 +82,8 @@ export default function AssistantPage() {
           throw new Error(detail.detail ?? "Statement upload failed");
         }
         const statements: Statement[] = await upload.json();
+        await fetch("/api/workflow/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ import_ids: statements.map(item => item.id), client_key: `intake-${statements[0]?.id}` }) }).catch(() => undefined);
+        setPanelKey(key => key + 1);
         importIds = statements.map((statement) => statement.id);
       }
       const turn = await fetch("/api/assistant/turn", {
@@ -125,9 +129,10 @@ export default function AssistantPage() {
           </div>
           <span className="assistant-local"><i /> Local analysis</span>
         </header>
-        <CoverageBanner />
 
         <div ref={feed} className="assistant-feed" aria-live="polite" aria-busy={loading || busy}>
+          <CoverageBanner />
+          <WorkflowPanel refreshKey={panelKey} />
           {loading && <p className="assistant-status">Opening your private conversation…</p>}
           {!loading && messages.length === 0 && (
             <div className="assistant-welcome">

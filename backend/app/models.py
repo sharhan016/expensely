@@ -501,3 +501,69 @@ class CashStatementEntry(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(16, 2))
     note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ReviewPeriod(Base):
+    """The period she wants understood: a standing preference, one row per user."""
+
+    __tablename__ = "review_periods"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AcknowledgedGap(Base):
+    """Dates she said she does not need. Never counts as checked or reconciled."""
+
+    __tablename__ = "acknowledged_gaps"
+    __table_args__ = (UniqueConstraint("account_id", "gap_start", "gap_end"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
+    )
+    gap_start: Mapped[date] = mapped_column(Date)
+    gap_end: Mapped[date] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class WorkflowRun(Base):
+    """What the assistant is doing and waiting for. Source of truth; checkpoints only mirror ids."""
+
+    __tablename__ = "workflow_runs"
+    __table_args__ = (UniqueConstraint("user_id", "client_key"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(24), default="intake")
+    status: Mapped[str] = mapped_column(String(16), default="running")
+    current_stage: Mapped[str] = mapped_column(String(32), default="start")
+    # Ids, dates and codes only: {"type": "gap", "account_id": 3, "gap_start": "2026-02-01", ...}
+    waiting_for: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    import_ids: Mapped[list] = mapped_column(JSON, default=list)
+    client_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class WorkflowEvent(Base):
+    """Append-only, plain-language progress. Never holds names, descriptions or amounts."""
+
+    __tablename__ = "workflow_events"
+    __table_args__ = (UniqueConstraint("run_id", "step_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workflow_runs.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    seq: Mapped[int]
+    stage: Mapped[str] = mapped_column(String(32))
+    message: Mapped[str] = mapped_column(String(300))
+    machine_status: Mapped[str] = mapped_column(String(16), default="info")
+    step_key: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

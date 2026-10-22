@@ -58,6 +58,7 @@ def compute_coverage(
     records_start: date | None = None,
     anchor_opening: Decimal | None = None,
     unbridged: frozenset[tuple[date, date]] = frozenset(),
+    acknowledged: frozenset[tuple[date, date]] = frozenset(),
 ) -> AccountCoverage:
     ordered = sorted(spans, key=lambda item: (item.start, item.end, item.key))
     start_date = records_start or (ordered[0].start if ordered else None)
@@ -78,7 +79,18 @@ def compute_coverage(
         comparable = cursor_closing is not None and item.opening is not None
         if item.start > cursor_end + DAY:
             gap_start, gap_end = cursor_end + DAY, item.start - DAY
-            if comparable and cursor_closing == item.opening:
+            if (gap_start, gap_end) in acknowledged:
+                # She said she does not need these dates. They stay unchecked: never counted.
+                segments.append(
+                    Segment(
+                        "acknowledged",
+                        gap_start,
+                        gap_end,
+                        "You said you do not need these dates. They are not counted as checked.",
+                    )
+                )
+                link_ok = False
+            elif comparable and cursor_closing == item.opening:
                 if (gap_start, gap_end) in unbridged:
                     segments.append(
                         Segment(
@@ -178,6 +190,7 @@ def overall_coverage(entries: list[AccountEntry]) -> OverallCoverage:
 
 _PROBLEM_TEXT = {
     "gap": "no statement covers {span}",
+    "acknowledged": "you said {span} is not needed, so it is not counted as checked",
     "discontinuity": "the balances do not connect at {span}",
     "difference": "the statement for {span} does not add up",
     "unverifiable": "the statement for {span} has no opening or closing balance, so it cannot "

@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import re
 from dataclasses import replace
 from pathlib import Path
@@ -12,6 +13,11 @@ from app.parsers.errors import ParseError
 from app.parsers.registry import parse_known_statement
 from app.parsers.table import parse_table
 from app.parsers.types import ParsedStatement
+
+# At DEBUG these libraries log the text they extract (narrations, amounts, names). Pin them so a
+# verbose root logger can never write statement contents to a log.
+for _noisy in ("pdfminer", "pdfplumber", "PIL", "pypdfium2"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 
 def _detect_bank(text: str) -> str:

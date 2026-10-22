@@ -32,3 +32,14 @@
 .records-withdrawals li>div{display:grid;gap:2px;min-width:0;font-size:13px}.records-withdrawals span{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
 .records-error{color:#9b2c1d;font-size:13px}.records-notice{color:var(--muted);font-size:13px}
 @media(min-width:640px){.records-start fieldset{grid-template-columns:1fr 1fr auto;align-items:end}.records-cash-form fieldset{grid-template-columns:150px 150px 1fr auto;align-items:end}}
+.seg-acknowledged{--seg:#8a8f9c}
+.workflow-panel{display:grid;gap:12px;margin:0 0 16px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:13px;line-height:1.5}
+.workflow-panel p{margin:0}
+.workflow-question{display:grid;gap:10px;padding:12px;border:1px solid var(--accent);border-radius:10px;background:var(--accent-soft)}
+.workflow-question form{display:grid;gap:10px}
+.workflow-question label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.workflow-question input{min-height:44px;padding:0 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink)}
+.workflow-actions{display:grid;gap:8px}
+.workflow-events{margin:0;padding-left:18px;color:var(--muted)}
+.workflow-events .waiting{color:var(--ink);font-weight:600}
+@media(min-width:640px){.workflow-actions{grid-template-columns:1fr 1fr}.workflow-question form{grid-template-columns:1fr 1fr auto;align-items:end}}
