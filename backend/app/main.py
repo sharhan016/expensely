@@ -9,6 +9,7 @@ from app.config import settings
 from app.counterparty_routes import router as counterparty_router
 from app.database import get_db
 from app.finance import router as finance_router
+from app.group_routes import router as group_router
 from app.imports import router as imports_router
 from app.meanings import apply_meaning_change, ensure_meaning
 from app.models import (
@@ -52,6 +53,7 @@ app.add_middleware(
 app.include_router(imports_router)
 app.include_router(finance_router)
 app.include_router(counterparty_router)
+app.include_router(group_router)
 app.include_router(transfer_router)
 app.include_router(assistant_router)
 

@@ -134,4 +134,7 @@ def apply_meaning_change(
             reason=reason,
         )
     )
+    from app.grouping import sync_transaction_group
+
+    sync_transaction_group(db, transaction)
     return meaning

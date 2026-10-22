@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import settings
 from app.counterparty_service import extract_counterparty
 from app.database import get_db
+from app.grouping import sync_transaction_group
 from app.models import (
     Account,
     ClassificationRule,
@@ -553,6 +554,7 @@ def confirm_import(
         db.flush()
         statement.bank_slug = bank_slug
     imported = skipped = 0
+    posted_movements = []
     for row in statement.rows:
         if not row.selected:
             skipped += int(row.duplicate_of_id is not None)
@@ -599,10 +601,13 @@ def confirm_import(
             review_status="current",
         )
         db.add(movement)
+        posted_movements.append(movement)
         imported += 1
     statement.account_id = account.id
     statement.status = ImportStatus.CONFIRMED
     db.flush()
+    for movement in posted_movements:
+        sync_transaction_group(db, movement)
     linked_card_payments = len(match_card_payments(db, user.id))
     linked_refunds = len(match_card_refunds(db, user.id))
     if (

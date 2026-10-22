@@ -292,6 +292,21 @@ class CounterpartyDetail(BaseModel):
     transactions: list[CounterpartyTransaction]
 
 
+class TransactionGroupSummary(BaseModel):
+    id: int
+    counterparty_id: int
+    counterparty_name: str
+    purpose: Purpose
+    direction: str
+    total: Decimal
+    transaction_count: int
+
+
+class TransactionGroupDetail(BaseModel):
+    group: TransactionGroupSummary
+    transactions: list[CounterpartyTransaction]
+
+
 class CardPaymentLinkResponse(BaseModel):
     id: int
     status: str

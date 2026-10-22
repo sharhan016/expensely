@@ -335,6 +335,44 @@ class TransactionLink(TimestampMixin, Base):
     inflow_transaction: Mapped[Transaction] = relationship(foreign_keys=[inflow_transaction_id])
 
 
+class TransactionGroup(TimestampMixin, Base):
+    __tablename__ = "transaction_groups"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "counterparty_id",
+            "purpose",
+            "direction",
+            name="uq_transaction_group_owner_meaning_direction",
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    counterparty_id: Mapped[int] = mapped_column(
+        ForeignKey("counterparties.id", ondelete="CASCADE"), index=True
+    )
+    purpose: Mapped[Purpose] = mapped_column(Enum(Purpose))
+    direction: Mapped[str] = mapped_column(String(16))
+    group_key: Mapped[str] = mapped_column(String(160), unique=True)
+    members: Mapped[list[TransactionGroupMember]] = relationship(
+        back_populates="group", cascade="all, delete-orphan"
+    )
+
+
+class TransactionGroupMember(Base):
+    __tablename__ = "transaction_group_members"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("transaction_groups.id", ondelete="CASCADE"), index=True
+    )
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    group: Mapped[TransactionGroup] = relationship(back_populates="members")
+    transaction: Mapped[Transaction] = relationship()
+
+
 class AssistantMessage(Base):
     __tablename__ = "assistant_messages"
     id: Mapped[int] = mapped_column(primary_key=True)
