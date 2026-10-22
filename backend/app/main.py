@@ -8,11 +8,13 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app import coverage_hooks  # noqa: F401  (registers reconciliation invalidation)
 from app.action_routes import router as action_router
 from app.assistant_routes import router as assistant_router
 from app.balances import account_balances, ledger_running_balances
 from app.config import settings
 from app.counterparty_routes import router as counterparty_router
+from app.coverage_routes import router as coverage_router
 from app.database import get_db
 from app.finance import router as finance_router
 from app.group_routes import router as group_router
@@ -88,6 +90,7 @@ app.include_router(counterparty_router)
 app.include_router(group_router)
 app.include_router(transfer_router)
 app.include_router(assistant_router)
+app.include_router(coverage_router)
 app.include_router(action_router)
 
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.counterparty_service import extract_counterparty
+from app.coverage_service import record_reconciliation
 from app.database import get_db
 from app.grouping import sync_transaction_group
 from app.models import (
@@ -21,7 +22,6 @@ from app.models import (
     ImportStatus,
     InstrumentType,
     Purpose,
-    Reconciliation,
     StatementImport,
     Transaction,
     TransactionMeaning,
@@ -658,6 +658,8 @@ def confirm_import(
             account_hint=statement.account_hint or uuid.uuid4().hex[:8],
             instrument_type=InstrumentType(statement.statement_kind),
             opening_balance=statement.opening_balance or 0,
+            # Card statements cannot be reconciled yet; keep them out of the overall line.
+            in_scope=statement.statement_kind != InstrumentType.CREDIT_CARD,
         )
         db.add(account)
         db.flush()
@@ -797,25 +799,7 @@ def confirm_import(
         _, period_difference = calculate_reconciliation(
             statement.opening_balance, period_movements, statement.closing_balance
         )
-        reconciliation = db.scalar(
-            select(Reconciliation).where(
-                Reconciliation.user_id == user.id,
-                Reconciliation.account_id == account.id,
-                Reconciliation.period_start == statement.period_start,
-                Reconciliation.period_end == statement.period_end,
-            )
-        )
-        if not reconciliation:
-            reconciliation = Reconciliation(
-                user_id=user.id,
-                account_id=account.id,
-                period_start=statement.period_start,
-                period_end=statement.period_end,
-                opening_balance=statement.opening_balance,
-                statement_closing_balance=statement.closing_balance,
-            )
-            db.add(reconciliation)
-        reconciliation.status = "balanced" if statement_difference == 0 else "difference"
+        record_reconciliation(db, statement, account.id, statement_difference)
     db.commit()
     return ImportConfirmResponse(
         imported=imported,
