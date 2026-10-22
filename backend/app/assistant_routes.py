@@ -21,7 +21,7 @@ from app.models import (
 )
 from app.schemas import AssistantMessageResponse, AssistantTurnRequest
 from app.security import current_user
-from app.services import calculate_reconciliation
+from app.services import calculate_reconciliation, legacy_unconfirmed_count
 
 router = APIRouter(prefix="/assistant", tags=["private assistant"])
 
@@ -166,7 +166,23 @@ def _import_reply(statements: list[StatementImport]) -> tuple[str, dict]:
     }
 
 
+def _legacy_note(db: Session, user_id: int) -> str:
+    count = legacy_unconfirmed_count(db, user_id)
+    if not count:
+        return ""
+    if count == 1:
+        return " 1 older entry is not used for suggestions until you confirm it."
+    return f" {count} older entries are not used for suggestions until you confirm them."
+
+
 def _workspace_reply(db: Session, user_id: int, message: str) -> tuple[str, dict]:
+    reply, context = _workspace_answer(db, user_id, message)
+    if context.get("kind") in {"workspace_summary", "unresolved_summary", "capabilities"}:
+        reply += _legacy_note(db, user_id)
+    return reply, context
+
+
+def _workspace_answer(db: Session, user_id: int, message: str) -> tuple[str, dict]:
     lowered = message.casefold()
     transactions = db.scalars(select(Transaction).where(Transaction.user_id == user_id)).all()
     accounts = db.scalars(select(Account).where(Account.user_id == user_id)).all()

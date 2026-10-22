@@ -40,6 +40,20 @@ def confirmed_history(db: Session, user_id: int) -> list[tuple[str, Purpose]]:
     ]
 
 
+def legacy_unconfirmed_count(db: Session, user_id: int) -> int:
+    """Older entries that would have taught suggestions but were never confirmed. Read-only."""
+    return (
+        db.scalar(
+            select(func.count(TransactionMeaning.transaction_id)).where(
+                TransactionMeaning.user_id == user_id,
+                TransactionMeaning.decision_source == "legacy_migration",
+                TransactionMeaning.purpose != Purpose.OTHER,
+            )
+        )
+        or 0
+    )
+
+
 def suggest_from_history(
     description: str, history: list[tuple[str, Purpose]]
 ) -> tuple[Purpose | None, str]:
