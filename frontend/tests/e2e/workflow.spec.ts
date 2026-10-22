@@ -157,3 +157,55 @@ test("the report page works at 390px and asks for statements when a range is emp
   await page.goto("/");
   await expect(page.getByTestId("period-summary")).toBeVisible();
 });
+
+test("money sent to a person is unknown until she says, then tracked and settled at 390px", async ({ page }) => {
+  await registerFresh(page, "motion");
+  const debit = (date: string, amount: string, balance: string) =>
+    `${date},UPI/DR/001/RAVI/YESB/ravi@okaxis/SYNTHETIC LUNCH,${amount},,${balance}\n`;
+  await confirmUpload(
+    page,
+    "jan-motion.csv",
+    header +
+      debit("05/01/2026", "200.00", "800.00") +
+      debit("10/01/2026", "300.00", "500.00") +
+      "20/01/2026,UPI/CR/009/RAVI/YESB/ravi@okaxis/SYNTHETIC BACK,,100.00,600.00\n",
+  );
+
+  // Default: nothing is assumed. The report shows the payments as not yet explained.
+  await page.goto("/report");
+  await page.getByLabel("From", { exact: true }).fill("2026-01-01");
+  await page.getByLabel("To", { exact: true }).fill("2026-01-31");
+  await page.getByRole("button", { name: "Show report" }).click();
+  await expect(page.getByRole("button", { name: "Not yet explained" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sent out, expected back" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Marked as spending" })).toHaveCount(0);
+
+  // One question for the person, not one per payment.
+  await page.goto("/assistant");
+  const question = page.getByRole("group", { name: /Question about/ });
+  await expect(question).toContainText("You sent 2 payments totalling ₹500.00", { timeout: 30_000 });
+  await noSideScroll(page);
+  await question.getByRole("button", { name: "I expect it back" }).click();
+  await expect(page.getByRole("list", { name: "Still out" })).toContainText("₹500.00 still out of ₹500.00 since 5 Jan 2026");
+
+  // The incoming payment is only a proposal until she confirms it; it is never income.
+  const proposal = page.getByRole("group", { name: /Possible return from/ });
+  await expect(proposal).toContainText("₹100.00 came in from");
+  await proposal.getByRole("button", { name: "Yes, it came back" }).click();
+  await expect(page.getByRole("list", { name: "Still out" })).toContainText("₹400.00 still out of ₹500.00");
+  await expect(page.getByRole("list", { name: "Still out" })).toContainText("₹100.00 has come back");
+  await noSideScroll(page);
+
+  await page.getByLabel("Message your financial assistant").fill("what is still out?");
+  await page.getByLabel("Send message").click();
+  await expect(page.getByText(/still out of ₹500.00 sent since 5 Jan 2026, and ₹100.00 has come back/).last()).toBeVisible();
+
+  await page.goto("/report");
+  await page.getByLabel("From", { exact: true }).fill("2026-01-01");
+  await page.getByLabel("To", { exact: true }).fill("2026-01-31");
+  await page.getByRole("button", { name: "Show report" }).click();
+  await expect(page.getByTestId("report-summary")).toContainText("Sent out and expected back: ₹500.00 (not counted as spending)");
+  await expect(page.getByTestId("report-summary")).toContainText("Returned to you: ₹100.00 (not counted as income)");
+  await expect(page.getByRole("button", { name: "Marked as income" })).toHaveCount(0);
+  await noSideScroll(page);
+});
