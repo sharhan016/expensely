@@ -203,7 +203,7 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
         suggested_purpose, suggestion_confidence = suggest_from_history(
             transaction.description, history
         )
-        candidate = extract_counterparty(transaction.description)
+        candidate = extract_counterparty(transaction.description, transaction.category)
         known_alias = (
             aliases.get((candidate.alias_type, candidate.alias_value)) if candidate else None
         )
