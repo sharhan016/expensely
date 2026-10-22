@@ -84,6 +84,10 @@ class TransactionResponse(ORMModel):
     trip_id: int | None
     counterparty_id: int | None = None
     counterparty_name: str = ""
+    category: str = "uncategorized"
+    category_confidence: str = "unresolved"
+    classification_evidence: dict = Field(default_factory=dict)
+    decision_source: str = "unresolved"
     notes: str
     meaning_version: int = 1
     created_at: datetime
@@ -97,6 +101,7 @@ class TransactionUpdate(BaseModel):
     employer_id: int | None = None
     trip_id: int | None = None
     counterparty_id: int | None = None
+    category: str | None = Field(default=None, min_length=2, max_length=40)
     notes: str | None = None
     expected_version: int | None = Field(default=None, ge=1)
     reason: str = Field(default="", max_length=500)
@@ -128,6 +133,10 @@ class ImportRowResponse(ORMModel):
     counterparty_alias_value: str
     counterparty_confidence: str
     confidence: str
+    category: str
+    category_confidence: str
+    classification_evidence: dict
+    decision_source: str
     duplicate_of_id: int | None
     selected: bool
 
@@ -163,6 +172,7 @@ class ImportRowUpdate(BaseModel):
     employer_id: int | None = None
     trip_id: int | None = None
     counterparty_id: int | None = None
+    category: str | None = Field(default=None, min_length=2, max_length=40)
 
 
 class ImportBulkUpdate(BaseModel):
@@ -173,6 +183,7 @@ class ImportBulkUpdate(BaseModel):
     employer_id: int | None = None
     trip_id: int | None = None
     counterparty_id: int | None = None
+    category: str | None = Field(default=None, min_length=2, max_length=40)
 
 
 class ImportConfirmRequest(BaseModel):
@@ -192,6 +203,7 @@ class ImportConfirmResponse(BaseModel):
     skipped_duplicates: int
     account_id: int
     linked_card_payments: int = 0
+    linked_refunds: int = 0
 
 
 class PdfPasswordRequest(BaseModel):
@@ -300,6 +312,19 @@ class UnmatchedCardPaymentResponse(BaseModel):
     txn_date: date
     card_account_name: str
     reason: str
+
+
+class CardRefundLinkResponse(BaseModel):
+    id: int
+    link_type: str
+    status: str
+    confidence: str
+    amount: Decimal
+    purchase_transaction_id: int
+    refund_transaction_id: int
+    card_account_name: str
+    purchase_date: date
+    refund_date: date
 
 
 class TransactionLinkDecision(BaseModel):

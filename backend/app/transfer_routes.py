@@ -13,6 +13,7 @@ from app.models import (
 )
 from app.schemas import (
     CardPaymentLinkResponse,
+    CardRefundLinkResponse,
     TransactionLinkDecision,
     UnmatchedCardPaymentResponse,
 )
@@ -60,6 +61,41 @@ def _response(row) -> CardPaymentLinkResponse:
     )
 
 
+def _refund_rows(db: Session, user_id: int):
+    purchase = aliased(Transaction)
+    refund = aliased(Transaction)
+    card_account = aliased(Account)
+    return db.execute(
+        select(TransactionLink, purchase, refund, card_account.name)
+        .join(purchase, purchase.id == TransactionLink.outflow_transaction_id)
+        .join(refund, refund.id == TransactionLink.inflow_transaction_id)
+        .join(card_account, card_account.id == refund.account_id)
+        .where(
+            TransactionLink.user_id == user_id,
+            purchase.user_id == user_id,
+            refund.user_id == user_id,
+            TransactionLink.link_type.in_(("refund", "reversal")),
+        )
+        .order_by(refund.txn_date.desc(), TransactionLink.id.desc())
+    ).all()
+
+
+def _refund_response(row) -> CardRefundLinkResponse:
+    link, purchase, refund, card_name = row
+    return CardRefundLinkResponse(
+        id=link.id,
+        link_type=link.link_type,
+        status=link.status,
+        confidence=link.confidence,
+        amount=refund.amount,
+        purchase_transaction_id=purchase.id,
+        refund_transaction_id=refund.id,
+        card_account_name=card_name,
+        purchase_date=purchase.txn_date,
+        refund_date=refund.txn_date,
+    )
+
+
 @router.get("", response_model=list[CardPaymentLinkResponse])
 def list_transaction_links(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return [_response(row) for row in _card_payment_rows(db, user.id)]
@@ -95,6 +131,55 @@ def unmatched_card_payments(db: Session = Depends(get_db), user: User = Depends(
         for transaction, account_name in rows
         if is_card_payment_credit(transaction)
     ]
+
+
+@router.get("/refunds", response_model=list[CardRefundLinkResponse])
+def list_refund_links(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return [_refund_response(row) for row in _refund_rows(db, user.id)]
+
+
+@router.patch("/refunds/{link_id}", response_model=CardRefundLinkResponse)
+def reject_refund_link(
+    link_id: int,
+    payload: TransactionLinkDecision,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    link = db.scalar(
+        select(TransactionLink)
+        .options(selectinload(TransactionLink.inflow_transaction).selectinload(Transaction.meaning))
+        .where(
+            TransactionLink.id == link_id,
+            TransactionLink.user_id == user.id,
+            TransactionLink.link_type.in_(("refund", "reversal")),
+        )
+    )
+    if not link:
+        raise HTTPException(status_code=404, detail="Refund link not found")
+    if link.status != "confirmed":
+        raise HTTPException(status_code=409, detail="This refund link is already resolved")
+    if payload.status == "rejected":
+        transaction = link.inflow_transaction
+        meaning = transaction.meaning
+        prior_purpose = link.evidence.get("previous_inflow_purpose", Purpose.OTHER.value)
+        if meaning and meaning.purpose == Purpose.REFUND:
+            apply_meaning_change(
+                db,
+                transaction=transaction,
+                actor_user_id=user.id,
+                purpose=Purpose(prior_purpose),
+                person_id=meaning.person_id,
+                employer_id=meaning.employer_id,
+                trip_id=meaning.trip_id,
+                counterparty_id=meaning.counterparty_id,
+                notes=meaning.notes,
+                reason="Rejected the automatic card refund or reversal link",
+            )
+        link.status = "rejected"
+        link.decision_source = "user_rejected"
+    db.commit()
+    row = next(row for row in _refund_rows(db, user.id) if row[0].id == link.id)
+    return _refund_response(row)
 
 
 @router.patch("/{link_id}", response_model=CardPaymentLinkResponse)

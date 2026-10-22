@@ -98,6 +98,10 @@ def _import_reply(statements: list[StatementImport]) -> tuple[str, dict]:
                 for name, (count, total) in flow_totals.items()
                 if count > 1
             ]
+            card_categories: dict[str, int] = {}
+            if statement.statement_kind == "credit_card":
+                for row in proposed:
+                    card_categories[row.category] = card_categories.get(row.category, 0) + 1
             lines.append(
                 f"I found a {institution} {instrument}{period} with {transaction_count} "
                 f"transaction{'s' if transaction_count != 1 else ''}. {reconciliation_copy} "
@@ -110,6 +114,12 @@ def _import_reply(statements: list[StatementImport]) -> tuple[str, dict]:
             )
             if repeated:
                 lines.append(f"Repeated flows found: {'; '.join(repeated)}.")
+            if card_categories:
+                category_copy = "; ".join(
+                    f"{count} {category.replace('_', ' ')}"
+                    for category, count in sorted(card_categories.items())
+                )
+                lines.append(f"Card activity identified: {category_copy}.")
             lines.append("It is ready for your review before I add it to the ledger.")
             reconciliation_results.append(
                 {"import_id": str(statement.id), "status": reconciliation}
@@ -163,10 +173,35 @@ def _workspace_reply(db: Session, user_id: int, message: str) -> tuple[str, dict
                 TransactionLink.status == "confirmed",
             )
         )
+        linked_refunds = db.scalar(
+            select(func.count(TransactionLink.id)).where(
+                TransactionLink.user_id == user_id,
+                TransactionLink.link_type.in_(("refund", "reversal")),
+                TransactionLink.status == "confirmed",
+            )
+        )
+        category_counts: dict[str, int] = {}
+        for transaction in transactions:
+            if transaction.account_id not in card_ids or not transaction.meaning:
+                continue
+            category = transaction.meaning.category
+            category_counts[category] = category_counts.get(category, 0) + 1
+        charges = sum(
+            category_counts.get(category, 0)
+            for category in ("fee", "interest", "tax", "emi_interest")
+        )
         return (
             f"Your credit-card amount payable is {_money(max(-card_position, Decimal('0')))}. "
-            f"I have linked {linked or 0} card payment{'s' if linked != 1 else ''} to bank debits.",
-            {"kind": "card_summary", "linked_card_payments": linked or 0},
+            f"I have linked {linked or 0} card payment{'s' if linked != 1 else ''} to bank debits "
+            f"and {linked_refunds or 0} refund{'s' if linked_refunds != 1 else ''} to purchases. "
+            f"{charges} fee, interest, or tax charge{'s' if charges != 1 else ''} are identified "
+            "separately from transfers.",
+            {
+                "kind": "card_summary",
+                "linked_card_payments": linked or 0,
+                "linked_refunds": linked_refunds or 0,
+                "charge_count": charges,
+            },
         )
     if any(term in lowered for term in ("person", "shop", "merchant", "paid", "flow")):
         rows = db.execute(

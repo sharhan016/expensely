@@ -72,6 +72,10 @@ def _transaction_response(transaction: Transaction) -> TransactionResponse:
                 if transaction.meaning.counterparty
                 else ""
             ),
+            "category": transaction.meaning.category,
+            "category_confidence": transaction.meaning.category_confidence,
+            "classification_evidence": transaction.meaning.classification_evidence,
+            "decision_source": transaction.meaning.decision_source,
             "notes": transaction.meaning.notes,
             "meaning_version": transaction.meaning.version,
         }
@@ -246,6 +250,7 @@ def update_transaction(
         employer_id=associations.employer_id,
         trip_id=associations.trip_id,
         counterparty_id=associations.counterparty_id,
+        category=changes.get("category", meaning.category),
         notes=changes.get("notes", meaning.notes),
         expected_version=payload.expected_version,
         reason=payload.reason,

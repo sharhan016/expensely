@@ -36,7 +36,7 @@ from app.schemas import (
 )
 from app.security import current_user
 from app.services import calculate_reconciliation, dedupe_hash, suggest_from_history
-from app.transfer_matching import match_card_payments
+from app.transfer_matching import match_card_payments, match_card_refunds
 
 router = APIRouter(prefix="/imports", tags=["statement imports"])
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".txt"}
@@ -217,6 +217,24 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
             if matched_rule or counterparty_purpose is not None
             else suggestion_confidence
         )
+        purpose_source = (
+            {"source": "confirmed_rule", "rule_id": matched_rule.id}
+            if matched_rule
+            else {"source": "confirmed_counterparty"}
+            if counterparty_purpose is not None
+            else {"source": "normalized_history"}
+            if suggested_purpose is not None
+            else {"source": "unresolved"}
+        )
+        decision_source = (
+            "confirmed_rule"
+            if matched_rule or counterparty_purpose is not None
+            else "history_suggestion"
+            if suggested_purpose is not None
+            else "built_in_mapping"
+            if transaction.category != "uncategorized"
+            else "unresolved"
+        )
         statement.rows.append(
             ImportRow(
                 txn_date=transaction.txn_date,
@@ -247,6 +265,13 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
                     else "unresolved"
                 ),
                 confidence=classification_confidence,
+                category=transaction.category,
+                category_confidence=transaction.category_confidence,
+                classification_evidence={
+                    "category": transaction.classification_evidence or {},
+                    "purpose": purpose_source,
+                },
+                decision_source=decision_source,
             )
         )
     statement.status = ImportStatus.READY
@@ -376,6 +401,13 @@ def update_import_row(
     )
     for field, value in changes.items():
         setattr(row, field, value)
+    if "category" in changes:
+        row.category_confidence = "confirmed"
+        row.classification_evidence = {
+            **row.classification_evidence,
+            "category": {"source": "user_correction"},
+        }
+        row.decision_source = "user_confirmed"
     db.commit()
     db.refresh(row)
     return row
@@ -415,6 +447,13 @@ def bulk_update_import_rows(
         }
         for field, value in row_changes.items():
             setattr(row, field, value)
+        if "category" in changes:
+            row.category_confidence = "confirmed"
+            row.classification_evidence = {
+                **row.classification_evidence,
+                "category": {"source": "user_correction"},
+            }
+            row.decision_source = "user_confirmed"
     db.commit()
     return selected_rows
 
@@ -552,6 +591,10 @@ def confirm_import(
             employer_id=associations.employer_id,
             trip_id=associations.trip_id,
             counterparty_id=counterparty_id,
+            category=row.category,
+            category_confidence=row.category_confidence,
+            classification_evidence=row.classification_evidence,
+            decision_source=row.decision_source,
             version=1,
             review_status="current",
         )
@@ -561,6 +604,7 @@ def confirm_import(
     statement.status = ImportStatus.CONFIRMED
     db.flush()
     linked_card_payments = len(match_card_payments(db, user.id))
+    linked_refunds = len(match_card_refunds(db, user.id))
     if (
         statement.period_start
         and statement.period_end
@@ -604,4 +648,5 @@ def confirm_import(
         skipped_duplicates=skipped,
         account_id=account.id,
         linked_card_payments=linked_card_payments,
+        linked_refunds=linked_refunds,
     )

@@ -141,6 +141,10 @@ class ImportRow(Base):
     counterparty_alias_value: Mapped[str] = mapped_column(String(180), default="")
     counterparty_confidence: Mapped[str] = mapped_column(String(16), default="unresolved")
     confidence: Mapped[str] = mapped_column(String(16), default="unresolved")
+    category: Mapped[str] = mapped_column(String(40), default="uncategorized")
+    category_confidence: Mapped[str] = mapped_column(String(16), default="unresolved")
+    classification_evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    decision_source: Mapped[str] = mapped_column(String(32), default="unresolved")
     duplicate_of_id: Mapped[int | None] = mapped_column(
         ForeignKey("transactions.id"), nullable=True
     )
@@ -278,6 +282,10 @@ class TransactionMeaning(TimestampMixin, Base):
     counterparty_id: Mapped[int | None] = mapped_column(
         ForeignKey("counterparties.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    category: Mapped[str] = mapped_column(String(40), default="uncategorized")
+    category_confidence: Mapped[str] = mapped_column(String(16), default="unresolved")
+    classification_evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    decision_source: Mapped[str] = mapped_column(String(32), default="unresolved")
     notes: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(default=1)
     review_status: Mapped[str] = mapped_column(String(20), default="current")

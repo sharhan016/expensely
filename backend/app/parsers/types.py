@@ -10,6 +10,9 @@ class ParsedTransaction:
     amount: Decimal
     balance: Decimal | None = None
     reference: str = ""
+    category: str = "uncategorized"
+    category_confidence: str = "unresolved"
+    classification_evidence: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)

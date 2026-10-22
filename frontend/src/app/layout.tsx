@@ -5,6 +5,7 @@ import "@fontsource/ibm-plex-sans/600.css";
 import "./globals.css";
 import "./workspace.css";
 import "./finance.css";
+import "./card-semantics.css";
 import "./password.css";
 import "./account-binding.css";
 import "./management.css";

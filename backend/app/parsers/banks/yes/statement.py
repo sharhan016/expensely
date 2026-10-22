@@ -1,6 +1,7 @@
 import re
 from dataclasses import replace
 
+from app.card_semantics import classify_card_transaction
 from app.parsers.errors import ParseError
 from app.parsers.normalise import parse_amount, parse_date
 from app.parsers.table import parse_table
@@ -56,12 +57,17 @@ def parse_credit_card(text: str) -> ParsedStatement:
         if not description:
             continue
         reference_match = re.search(r"Ref No:\s*([A-Z0-9-]+)", description, re.I)
+        amount = parse_amount(f"{amount_match.group(1)} {amount_match.group(2)}")
+        semantic = classify_card_transaction(description, amount)
         transactions.append(
             ParsedTransaction(
                 txn_date=parse_date(match.group(1)),
                 description=description,
-                amount=parse_amount(f"{amount_match.group(1)} {amount_match.group(2)}"),
+                amount=amount,
                 reference=reference_match.group(1) if reference_match else "",
+                category=semantic.category,
+                category_confidence=semantic.confidence,
+                classification_evidence=semantic.evidence,
             )
         )
     if not transactions:

@@ -22,6 +22,10 @@ def ensure_meaning(db: Session, transaction: Transaction) -> TransactionMeaning:
         employer_id=transaction.employer_id,
         trip_id=transaction.trip_id,
         counterparty_id=None,
+        category="uncategorized",
+        category_confidence="unresolved",
+        classification_evidence={},
+        decision_source="legacy_migration",
         notes=transaction.notes,
         version=1,
         review_status="current",
@@ -37,6 +41,7 @@ def meaning_snapshot(meaning: TransactionMeaning) -> dict[str, str | int | None]
         "employer_id": meaning.employer_id,
         "trip_id": meaning.trip_id,
         "counterparty_id": meaning.counterparty_id,
+        "category": meaning.category,
         "notes": meaning.notes,
     }
 
@@ -52,6 +57,7 @@ def apply_meaning_change(
     trip_id: int | None,
     counterparty_id: int | None,
     notes: str,
+    category: str | None = None,
     expected_version: int | None = None,
     reason: str = "",
 ) -> TransactionMeaning:
@@ -63,12 +69,14 @@ def apply_meaning_change(
         )
 
     before = meaning_snapshot(meaning)
+    category = category or meaning.category
     after = {
         "purpose": purpose.value,
         "person_id": person_id,
         "employer_id": employer_id,
         "trip_id": trip_id,
         "counterparty_id": counterparty_id,
+        "category": category,
         "notes": notes,
     }
     if before == after:
@@ -97,6 +105,11 @@ def apply_meaning_change(
     meaning.employer_id = employer_id
     meaning.trip_id = trip_id
     meaning.counterparty_id = counterparty_id
+    if category != meaning.category:
+        meaning.category_confidence = "confirmed"
+        meaning.classification_evidence = {"category": {"source": "user_correction"}}
+        meaning.decision_source = "user_confirmed"
+    meaning.category = category
     meaning.notes = notes
     meaning.version += 1
     if finalized:
