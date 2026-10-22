@@ -3,7 +3,7 @@
 Last updated: 2026-10-22  
 Branch: `agentic-development`  
 Source specification: `expense-analyzer-agent-first-workflow-prompt.md`
-Current plan: `docs/alignment-and-plan.md` (Increments 1a, 1b, 2, a basic 3 and a lite 4 and a first 5 done)
+Current plan: `docs/alignment-and-plan.md` (Increments 1a, 1b, 2, a basic 3 and a lite 4, 5 and 5b done)
 
 ## How to use this file
 
@@ -90,6 +90,15 @@ Known limits: only tests using the shared `workspace` fixture run on PostgreSQL 
 - The report and dashboard share the new buckets automatically; the assistant answers "what is still out?" with amounts, dates and evidence refs; the assistant page shows the questions, return proposals, transfer proposals and the still-out list.
 - Migration `e3b5c7d9f106` (downgrade tested up/down/up on PostgreSQL). The allocation cap is enforced in the service under a row lock, not by a database constraint (only positivity is a constraint).
 - Not built: mapping existing loan/entrusted purposes onto expectations, expectations for third parties and own-account "expected back", per-person remembered answers, investigation tools that read expectations.
+
+## Increment 5b: hardening and loan mapping (done 2026-10-22)
+
+- The allocation cap is enforced by PostgreSQL: migration `f4c6d8e0a217` adds a constraint trigger that locks the movement row and rejects any confirmed allocations that exceed it, including raw SQL (`tests/integration/test_allocation_cap_trigger.py`). The service check stays for friendly errors. SQLite unit tests rely on the service check only.
+- Written off is its own report line, "Written off (not counted)", in the report, dashboard and assistant; undoing it restores "sent out, expected back". "Not expected back after all" pauses the allocations so the payments are unknown again and asked about again; undoing restores them if nothing else has claimed those payments.
+- "Remember for this person" is off by default (`motion_preferences`). A remembered "expense" applies only to payments added later, is audited (reason "Applied your remembered choice for this person", source `confirmed_rule`), shown in a Remembered choices list, and reversible ("Undo applied and stop remembering" reverts only untouched applications). A remembered "expected back" only changes the question to a one-tap confirmation. Removing a preference leaves everything already done untouched.
+- Existing `loan_given` rows are proposed as one expectation per person, with `loan_repayment` rows as returns, showing the loan balance now and what would be tracked. Accepting never changes a purpose; repayments that do not fully fit what was lent are left as they were; reverting keeps history (allocations become `reverted`). Entrusted and reimbursement rows are never converted; the report explains how they relate to expectations (`obligation_note`).
+- Investigation: new `open_expectations` tool; the planner calls it and `related_links` for exact matches and states how things were recorded (open expectation, written off, confirmed return, pending return, linked movement) with evidence ids and no cause.
+- Known limits: report buckets classify whole movements, so a partly allocated movement lands in one bucket; remembered choices apply per counterparty (not per person record); SQLite unit tests cannot prove the database cap.
 
 ## Current outcome
 
