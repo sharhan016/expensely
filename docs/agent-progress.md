@@ -3,7 +3,7 @@
 Last updated: 2026-10-22  
 Branch: `agentic-development`  
 Source specification: `expense-analyzer-agent-first-workflow-prompt.md`
-Current plan: `docs/alignment-and-plan.md` (Increments 1a, 1b, 2, a basic 3 and a lite 4 done)
+Current plan: `docs/alignment-and-plan.md` (Increments 1a, 1b, 2, a basic 3 and a lite 4 and a first 5 done)
 
 ## How to use this file
 
@@ -80,6 +80,16 @@ Known limits: only tests using the shared `workspace` fixture run on PostgreSQL 
 - Endpoints: `POST /investigate`, `POST /investigate/tools/{name}`, `POST /investigate/evidence` (opens the rows; anything not owned is 404). The assistant routes "where did my 1200 go" to it and shows an answer card whose "Open the records" buttons show the rows.
 - No migration in this increment.
 - Not built: related-flow tools (Increment 5), any model, account-specific searches, relative dates beyond "last month".
+
+## Increment 5: money in motion, default "unknown until she says" (done 2026-10-22)
+
+- A payment to a person is never assumed to be an expense or a loan. Outgoing bank payments that have a detected counterparty and no purpose stay in "not yet explained" and are asked about once per person (`GET /motion` questions). Card, cash, linked and already-classified rows are not asked about.
+- Her answer decides: "I expect it back" creates a `money_expectations` row and `expectation_allocations` (role out) and the payments move to the "Sent out, expected back" bucket; "It was an expense" records purpose personal through the normal audited meaning change, so they count as spending. Later payments to the same person are asked about again; replays change nothing.
+- Returns: an incoming movement from the same person is only a proposal until she confirms it; confirmed returns land in "Returned to you" and never in income. Allocations cannot exceed the movement (row-locked check) and a return cannot exceed what is still expected back. Reverting, dismissing, "not expected back" and "write off" are reversible decisions.
+- Own-account transfers: a unique pair (equal amount, different bank accounts, within 3 days) is auto-linked as `own_transfer` only with evidence beyond amount and date (shared reference, shared long number, or an account hint in the narration); otherwise it is proposed for her confirmation; ambiguous pairs are neither linked nor proposed.
+- The report and dashboard share the new buckets automatically; the assistant answers "what is still out?" with amounts, dates and evidence refs; the assistant page shows the questions, return proposals, transfer proposals and the still-out list.
+- Migration `e3b5c7d9f106` (downgrade tested up/down/up on PostgreSQL). The allocation cap is enforced in the service under a row lock, not by a database constraint (only positivity is a constraint).
+- Not built: mapping existing loan/entrusted purposes onto expectations, expectations for third parties and own-account "expected back", per-person remembered answers, investigation tools that read expectations.
 
 ## Current outcome
 
