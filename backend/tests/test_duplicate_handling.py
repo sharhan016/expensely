@@ -181,3 +181,42 @@ def test_possibly_missed_rows_report_is_owned_and_read_only(workspace):
     assert items[0]["present_count"] == 1
     assert workspace.db.scalar(select(func.count(Transaction.id))) == before
     assert workspace.db.scalar(select(func.count(ImportRow.id))) == rows_before
+
+
+def test_split_identical_pair_with_different_running_balances_keeps_both(workspace):
+    """Statement A ends on the day the pair was split; statement B starts that same day."""
+    account = workspace.account()
+    first = workspace.stage(
+        [(DAY, "SYNTHETIC FEE", "-10.00", "", "990.00")], period=(date(2026, 3, 1), DAY)
+    )
+    workspace.confirm(first, account)
+
+    second = workspace.stage(
+        [
+            (DAY, "SYNTHETIC FEE", "-10.00", "", "980.00"),
+            (date(2026, 3, 6), "SYNTHETIC SHOP", "-4.00", "", "976.00"),
+        ],
+        period=(DAY, date(2026, 3, 10)),
+    )
+
+    assert second.rows[0].duplicate_of_id is None
+    assert workspace.confirm(second, account).json()["imported"] == 2
+    assert _count(workspace, account) == 3
+
+    again = workspace.stage(
+        [(DAY, "SYNTHETIC FEE", "-10.00", "", "980.00")], period=(DAY, date(2026, 3, 10))
+    )
+    assert again.rows[0].duplicate_of_id is not None
+    assert workspace.confirm(again, account).json()["imported"] == 0
+    assert _count(workspace, account) == 3
+
+
+def test_split_identical_pair_without_balances_is_treated_as_a_reimport(workspace):
+    """Known limit: with no balance to tell them apart, one row seen twice is a re-import."""
+    account = workspace.account()
+    workspace.confirm(workspace.stage([(DAY, "SYNTHETIC FEE", "-10.00", "")]), account)
+
+    second = workspace.stage([(DAY, "SYNTHETIC FEE", "-10.00", "")])
+
+    assert second.rows[0].duplicate_of_id is not None
+    assert second.rows[0].selected is False

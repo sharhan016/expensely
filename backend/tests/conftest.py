@@ -43,7 +43,7 @@ class TrustWorkspace:
 
     def stage(
         self,
-        rows: list[tuple[date, str, str, str]],
+        rows: list[tuple],
         *,
         hint: str = "1111",
         opening: str | None = None,
@@ -51,7 +51,7 @@ class TrustWorkspace:
         period: tuple[date, date] | None = None,
         user: User | None = None,
     ) -> StatementImport:
-        """Stage rows as (date, description, amount, reference) through the real pipeline."""
+        """Stage (date, description, amount, reference[, running balance]) rows via the pipeline."""
         owner = user or self.owner
         batch = ImportBatch(user_id=owner.id)
         self.db.add(batch)
@@ -71,8 +71,10 @@ class TrustWorkspace:
                     description=description,
                     amount=Decimal(amount),
                     reference=reference,
+                    balance=Decimal(row[4]) if len(row) > 4 else None,
                 )
-                for txn_date, description, amount, reference in rows
+                for row in rows
+                for txn_date, description, amount, reference in [row[:4]]
             ],
             bank_slug="test",
             source_hint=hint,
