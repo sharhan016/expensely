@@ -24,6 +24,7 @@ export const KIND_LABELS: Record<string, string> = {
   unverifiable: "Covered, but cannot be checked",
   unverified: "Needs a re-check",
   invalidated: "Changed after it was checked",
+  period_mismatch: "Statement adds up, but other movements in these dates do not",
 };
 
 export function rangeLabel(start: string, end: string) {

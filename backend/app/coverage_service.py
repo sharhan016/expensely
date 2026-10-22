@@ -130,6 +130,18 @@ def record_reconciliation(
     reconciliation.status = "balanced" if statement_difference == 0 else "difference"
     reconciliation.source_statement_id = statement.id
     reconciliation.computed_difference = statement_difference
+    period_amounts = list(
+        db.scalars(
+            select(Transaction.amount).where(
+                Transaction.user_id == statement.user_id,
+                Transaction.account_id == account_id,
+                Transaction.txn_date.between(statement.period_start, statement.period_end),
+            )
+        )
+    )
+    _, reconciliation.period_difference = calculate_reconciliation(
+        statement.opening_balance, period_amounts, statement.closing_balance
+    )
     reconciliation.movement_fingerprint = movement_fingerprint(
         db, statement.user_id, account_id, statement.period_start, statement.period_end
     )
@@ -181,7 +193,12 @@ def _span_state(db: Session, statement: StatementImport, reconciliation: Reconci
     )
     if current != reconciliation.movement_fingerprint:
         return "invalidated"
-    return "balanced" if reconciliation.status == "balanced" else "difference"
+    if reconciliation.status != "balanced":
+        return "difference"
+    if reconciliation.period_difference is None:
+        return "unverified"
+    # The statement adds up on its own rows, but other movements in the same dates do not.
+    return "balanced" if reconciliation.period_difference == 0 else "period_mismatch"
 
 
 def account_spans(db: Session, account: Account) -> list[StatementSpan]:

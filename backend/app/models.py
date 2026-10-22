@@ -442,6 +442,8 @@ class Reconciliation(TimestampMixin, Base):
     )
     movement_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     computed_difference: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    # Whole-period difference (every account movement in the dates), beside the statement's own.
+    period_difference: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     invalidation_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
 

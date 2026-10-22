@@ -12,7 +12,7 @@ from decimal import Decimal
 
 # Span states (how well one statement is verified) and segment kinds (what is true of a date range).
 BALANCED = "balanced"
-PROBLEM_STATES = ("difference", "unverifiable", "unverified", "invalidated")
+PROBLEM_STATES = ("difference", "unverifiable", "unverified", "invalidated", "period_mismatch")
 NEUTRAL_KINDS = ("covered", "bridged")
 
 DAY = timedelta(days=1)
@@ -184,6 +184,8 @@ _PROBLEM_TEXT = {
     "be checked",
     "unverified": "the check for {span} is out of date and needs a re-check",
     "invalidated": "a movement in {span} changed after it was checked",
+    "period_mismatch": "the statement for {span} adds up, but the movements recorded for those "
+    "dates do not add up with it",
 }
 
 

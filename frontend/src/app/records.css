@@ -13,7 +13,7 @@
 .coverage-bar{display:flex;height:16px;margin:14px 0 10px;overflow:hidden;border-radius:6px;background:var(--line)}
 .coverage-bar .seg{display:block;height:100%;min-width:3px}
 .seg-covered{--seg:#0d7653}.seg-bridged{--seg:#6aa8d8}.seg-gap{--seg:#c7ccd6}.seg-discontinuity{--seg:#c0462f}
-.seg-difference{--seg:#c0462f}.seg-unverifiable{--seg:#b9a24a}.seg-unverified{--seg:#e0a24a}.seg-invalidated{--seg:#d9743a}
+.seg-difference{--seg:#c0462f}.seg-unverifiable{--seg:#b9a24a}.seg-unverified{--seg:#e0a24a}.seg-invalidated{--seg:#d9743a}.seg-period_mismatch{--seg:#b5568f}
 .coverage-bar .seg,.records-segments .seg-dot{background:var(--seg)}
 .coverage-bar .seg-bridged{background-image:repeating-linear-gradient(135deg,transparent 0 4px,rgb(255 255 255/.55) 4px 7px)}
 .records-segments{margin:0 0 14px;padding:0;list-style:none}
