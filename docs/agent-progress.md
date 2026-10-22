@@ -3,7 +3,7 @@
 Last updated: 2026-10-22  
 Branch: `agentic-development`  
 Source specification: `expense-analyzer-agent-first-workflow-prompt.md`
-Current plan: `docs/alignment-and-plan.md` (Increments 1a, 1b, 2 and a basic 3 done)
+Current plan: `docs/alignment-and-plan.md` (Increments 1a, 1b, 2, a basic 3 and a lite 4 done)
 
 ## How to use this file
 
@@ -70,6 +70,16 @@ Known limits: only tests using the shared `workspace` fixture run on PostgreSQL 
 - Assistant: "5 October to 20 October" style requests; an inferred year is confirmed first, an explicit one is answered directly.
 - UI: Report page (copy as table, Download CSV, browser Print). The duplicate coverage banner was removed from the assistant page; it remains on Home.
 - Not built: PDF generation, charts, grouping beyond counterparties (confirmed names listed; unconfirmed detected names counted separately).
+
+## Increment 4: "where did my amount go" (lite, no model) (done 2026-10-22)
+
+- The dashboard now returns a `period` section built by `app/period_report.py`, the same service and grouping rules as the report page (`GET /dashboard?from&to`; default is the saved review period, else the last 30 days). A test feeds one dataset to both and asserts identical numbers.
+- Report hardening: random-data property test that every total equals the sum of its drill-down rows; an empty range says so and asks for statements; `/reports/period/rows` pages (limit up to 500, `showing`/`total`), exports stay complete; the report page is covered at 390px.
+- `app/investigate/tools.py`: `find_by_amount` (exact; near matches only when asked, labeled "close, not exact"), `find_cash_withdrawals` (combinations of at most three ATM withdrawals, labeled "possible"), `related_links`, `unresolved_in_window`, `coverage_gaps`, `balance_discontinuities`. Inputs are validated (amount precision and size, window length, limits); results hold ids, dates and amounts only, never narrations or names; everything is owner-scoped.
+- `app/investigate/planner.py`: fixed rules pick the tools; every sentence is a template over results. Factual claims carry evidence refs (`txn:`, `stmt:`, `disc:`, `cov:`, `scope:`) and a claim without evidence is dropped before it leaves the function. A discontinuity equal to the amount is stated as a fact about the records, not a cause. With no findings it says so and asks one question (when, or which account if a window was given). A failing tool is reported as "I could not run one of the checks" with no conclusion drawn from it.
+- Endpoints: `POST /investigate`, `POST /investigate/tools/{name}`, `POST /investigate/evidence` (opens the rows; anything not owned is 404). The assistant routes "where did my 1200 go" to it and shows an answer card whose "Open the records" buttons show the rows.
+- No migration in this increment.
+- Not built: related-flow tools (Increment 5), any model, account-specific searches, relative dates beyond "last month".
 
 ## Current outcome
 
