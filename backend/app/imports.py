@@ -198,7 +198,7 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
     # A row is a proven re-import only when the same account already holds the same movement
     # (date, amount, narration, reference). Identical rows are matched one-to-one by ordinal so a
     # second genuine row is never absorbed by the first.
-    existing_by_key: dict[tuple, list[int]] = {}
+    existing_by_key: dict[tuple, list[tuple[int, Decimal | None]]] = {}
     if statement.account_id and parsed.transactions:
         for existing in db.execute(
             select(Transaction)
@@ -212,16 +212,30 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
             key = movement_key(
                 existing.txn_date, existing.amount, existing.description, existing.reference
             )
-            existing_by_key.setdefault(key, []).append(existing.id)
-    parsed_keys = [
-        movement_key(item.txn_date, item.amount, item.description, item.reference)
-        for item in parsed.transactions
-    ]
-    for transaction, key, ordinal in zip(
-        parsed.transactions, parsed_keys, assign_ordinals(parsed_keys), strict=True
-    ):
-        matches = existing_by_key.get(key, [])
-        duplicate = matches[ordinal] if ordinal < len(matches) else None
+            existing_by_key.setdefault(key, []).append((existing.id, existing.bank_balance))
+    claimed: set[int] = set()
+    for transaction in parsed.transactions:
+        key = movement_key(
+            transaction.txn_date, transaction.amount, transaction.description, transaction.reference
+        )
+        # First unclaimed ledger row with the same movement whose running balance does not
+        # contradict this row's. Two genuine rows differ in running balance even when all else
+        # matches; with no balance on either side the match stays ambiguous (a re-import).
+        duplicate = next(
+            (
+                candidate_id
+                for candidate_id, candidate_balance in existing_by_key.get(key, [])
+                if candidate_id not in claimed
+                and (
+                    candidate_balance is None
+                    or transaction.balance is None
+                    or candidate_balance == transaction.balance
+                )
+            ),
+            None,
+        )
+        if duplicate is not None:
+            claimed.add(duplicate)
         matched_rule = next(
             (
                 rule
@@ -687,14 +701,36 @@ def confirm_import(
             row.reference,
             row_ordinals[row.id],
         )
-        already_posted = db.scalar(
-            select(Transaction.amount).where(
-                Transaction.user_id == user.id, Transaction.dedupe_hash == fingerprint
-            )
-        )
+        ordinal = row_ordinals[row.id]
+        already_posted = None
+        while True:
+            already_posted = db.execute(
+                select(Transaction.amount, Transaction.bank_balance).where(
+                    Transaction.user_id == user.id, Transaction.dedupe_hash == fingerprint
+                )
+            ).first()
+            # Same slot taken by a row whose running balance proves it is a different genuine
+            # movement: move to the next free ordinal instead of dropping this row.
+            if (
+                already_posted is not None
+                and row.balance is not None
+                and already_posted.bank_balance is not None
+                and already_posted.bank_balance != row.balance
+            ):
+                ordinal += 1
+                fingerprint = dedupe_hash(
+                    account.id,
+                    row.txn_date,
+                    row.amount,
+                    row.description,
+                    row.reference,
+                    ordinal,
+                )
+                continue
+            break
         if already_posted is not None:
             skipped += 1
-            statement_amounts.append(already_posted)
+            statement_amounts.append(already_posted.amount)
             continue
         movement = Transaction(
             user_id=user.id,
