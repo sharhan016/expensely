@@ -18,6 +18,9 @@ def upgrade():
         "accounts",
         sa.Column("in_scope", sa.Boolean(), nullable=False, server_default=sa.true()),
     )
+    # Card statements expose amounts due, not a closing balance, so they cannot be reconciled
+    # yet. Keep them out of the overall line until they can; she can opt a card back in.
+    op.execute("UPDATE accounts SET in_scope = false WHERE kind = 'credit_card'")
     op.add_column("accounts", sa.Column("records_start", sa.Date(), nullable=True))
     op.add_column(
         "accounts",
