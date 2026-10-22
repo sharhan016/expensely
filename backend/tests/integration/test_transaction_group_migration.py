@@ -5,13 +5,13 @@ import uuid
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Account,
     Counterparty,
     Purpose,
     Transaction,
@@ -50,14 +50,20 @@ def test_transaction_group_migration_backfills_and_rolls_back_without_movement_c
         user = User(email=email, password_hash="unused", display_name="Group migration")
         db.add(user)
         db.flush()
-        account = Account(
-            user_id=user.id,
-            name="Current",
-            bank_slug="yes",
-            account_hint=uuid.uuid4().hex[:8],
+        # Plain SQL on purpose: this runs against an older schema than the current Account model.
+        account = SimpleNamespace(
+            id=db.execute(
+                text(
+                    "INSERT INTO accounts (user_id, name, bank_slug, account_hint, kind, "
+                    "currency, opening_balance, created_at, updated_at) VALUES "
+                    "(:user_id, 'Current', 'yes', :hint, 'bank', 'INR', 0, now(), now()) "
+                    "RETURNING id"
+                ),
+                {"user_id": user.id, "hint": uuid.uuid4().hex[:8]},
+            ).scalar_one()
         )
         counterparty = Counterparty(user_id=user.id, display_name="Asha")
-        db.add_all([account, counterparty])
+        db.add(counterparty)
         db.flush()
         movements = []
         for day, amount in ((1, "-100.00"), (2, "-200.00")):
