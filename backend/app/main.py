@@ -1,7 +1,9 @@
+import logging
 from datetime import date
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -55,6 +57,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+logger = logging.getLogger("expense.api")
+
+
+@app.middleware("http")
+async def contain_unexpected_errors(request: Request, call_next):
+    """Log only the error class and route for unhandled failures.
+
+    The default server traceback prints exception messages and SQL parameters, which can hold
+    transaction descriptions, names, amounts and account numbers.
+    """
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        route = request.scope.get("route")
+        logger.error(
+            "Unhandled %s on %s %s",
+            type(exc).__name__,
+            request.method,
+            getattr(route, "path", "unmatched"),
+        )
+        return JSONResponse(
+            status_code=500, content={"detail": "Something went wrong. Nothing was changed."}
+        )
+
+
 app.include_router(imports_router)
 app.include_router(finance_router)
 app.include_router(counterparty_router)
