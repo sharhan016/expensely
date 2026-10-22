@@ -130,6 +130,14 @@ test("groups repeated UPI flows and reuses a confirmed meaning", async ({ page }
   await page.getByLabel("Use next time").selectOption("personal");
   await page.getByRole("button", { name: "Confirm & save" }).click();
   await expect(page.getByText("Confirmed identity")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Apply personal to 3 unresolved movements?" }),
+  ).toBeVisible();
+  await expect(page.getByText(/₹600.*Raw bank descriptions will not change/)).toBeVisible();
+  await page.getByRole("button", { name: "Apply to past movements" }).click();
+  await expect(page.getByRole("heading", { name: "Past movements updated" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo batch change" })).toBeVisible();
+  await expect(page.getByText("personal", { exact: true }).first()).toBeVisible();
   if (process.env.CAPTURE_FLOW_UI === "1") {
     await page.screenshot({ path: "/private/tmp/expense-flow-desktop.png", fullPage: true });
     await page.setViewportSize({ width: 360, height: 800 });
