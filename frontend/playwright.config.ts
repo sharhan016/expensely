@@ -7,6 +7,8 @@ const testDatabaseUrl =
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
+  // One backend and one dev server with a shared signed-in account: run specs one at a time.
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "line",

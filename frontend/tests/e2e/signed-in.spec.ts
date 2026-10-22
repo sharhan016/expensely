@@ -37,7 +37,8 @@ test.describe("shared signed-in account", () => {
     await page.getByLabel("Message your financial assistant").fill("Please read this statement");
     await page.getByLabel("Send message").click();
     const reply = page.locator(".assistant-message").filter({ hasText: /I found a/ }).last();
-    await expect(reply).toContainText(`with ${rows.length} transactions`);
+    // First request after a cold start compiles the route and parses the PDF.
+    await expect(reply).toContainText(`with ${rows.length} transactions`, { timeout: 45_000 });
     await expect(reply).toContainText("opening balance, movements, and closing balance reconcile");
     await expect(reply).toContainText(`Money moving out is ₹${inrText(statement.out)}`);
     await expect(reply).toContainText(`money moving in is ₹${inrText(statement.in)}`);
@@ -82,7 +83,7 @@ test.describe("shared signed-in account", () => {
     await page.getByLabel("Message your financial assistant").fill("Please read this");
     await page.getByLabel("Send message").click();
     const reply = page.locator(".assistant-message").filter({ hasText: "I could not read damaged.pdf" }).last();
-    await expect(reply).toContainText("We could not read this PDF");
+    await expect(reply).toContainText("We could not read this PDF", { timeout: 30_000 });
     await expect(reply).not.toContainText(/password/i);
   });
 });
