@@ -3,7 +3,7 @@
 Last updated: 2026-10-22  
 Branch: `agentic-development`  
 Source specification: `expense-analyzer-agent-first-workflow-prompt.md`
-Current plan: `docs/alignment-and-plan.md` (Increment 1a done; 1b awaits approval)
+Current plan: `docs/alignment-and-plan.md` (Increments 1a and 1b done; Increment 2 awaits approval)
 
 ## How to use this file
 
@@ -32,6 +32,18 @@ Each fix has a regression test; failing-before status is in the commit report, n
 - Shared `privacy_probe` fixture (`backend/tests/conftest.py`) plus failure-path tests. Unhandled server errors are contained and logged by class and route only.
 
 Known gaps found: a corrupt PDF is classified `password_required`; legacy `legacy_migration` meanings are not treated as confirmed history; no `statement fingerprint` yet; the possibly-missed report is advisory only.
+
+## Increment 1b: what my records cover (done 2026-10-22)
+
+- `app/coverage.py` (pure): per-account chain from `records_start` through consecutive balanced, verifiable, un-invalidated statements whose balances connect. States: covered, bridged (date gap with exactly matching balances; shown separately, can be un-bridged), gap, discontinuity, difference, unverifiable, unverified, invalidated. Overall = earliest in-scope account, naming the laggard.
+- `app/coverage_service.py`: spans from confirmed statements and `Reconciliation` evidence; movement fingerprint; idempotent recompute (`POST /coverage/recompute`); `GET /coverage`; `PATCH /coverage/accounts/{id}` (in_scope, records_start, optional confirmed opening balance); un-bridge / re-bridge endpoints.
+- `app/coverage_hooks.py`: a flush hook invalidates covering reconciliations when a `Transaction` is added, removed, or its amount, date or account changes. Meaning edits do not. Sessions loading data against an older schema opt out with `session.info["skip_coverage_invalidation"]`.
+- Migration `a7d3c5e1f904`: account `in_scope`, `records_start`, `records_opening_balance`; reconciliation `source_statement_id`, `movement_fingerprint`, `computed_difference`, `invalidated_at`, `invalidation_reason`; tables `coverage_gap_unbridges`, `cash_withdrawal_markers`, `cash_statement_entries`. Existing reconciliations are unverified until "Re-check records". Existing credit-card accounts start out of scope (card statements have no closing balance, so they cannot be reconciled yet).
+- Cash bucket (`app/cash.py`, `/cash`): narration rule marks ATM/cash-withdrawal debits on bank accounts only; reversible markers (`source` rule or user; an unmarked withdrawal is never re-marked); her own cash entries are labeled "No statement behind this"; reported only as "withdrawn, not yet explained", never a cash balance; never counts toward reconciled-through. `neutral_movement_ids()` lists movements that future income/spending totals must exclude (no such totals exist yet).
+- UI: Records page, coverage banner on Home and the assistant, cash markers in the ledger.
+- Housekeeping: workspace-fixture tests run on PostgreSQL (`make test-pg`, in `make verify`); balance-aware handling of same-day identical rows split across statements; corrupt PDFs are no longer reported as password problems; assistant notes legacy entries not used for suggestions.
+
+Known limits: only tests using the shared `workspace` fixture run on PostgreSQL (older test modules build their own SQLite engines); recompute judges a statement on its own rows, so a movement added from elsewhere invalidates the period but a re-check can restore it; card reconciliation is not built; the manual `POST /reconciliations` still writes rows without a fingerprint (they read as unverified).
 
 ## Current outcome
 
