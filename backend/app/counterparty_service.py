@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass
 
+_WRAPPED_HANDLE = re.compile(r"([A-Za-z0-9])-\s+(?=[A-Za-z0-9._-]*@)")
 _UPI_HANDLE = re.compile(r"(?<![A-Z0-9._-])([A-Z0-9][A-Z0-9._-]{1,}@[A-Z][A-Z0-9.-]{1,})", re.I)
 _DISPLAY_SEPARATORS = re.compile(r"[._-]+")
 _REFERENCE_FRAGMENT = re.compile(
@@ -33,6 +34,8 @@ def extract_counterparty(
     description: str, category: str | None = None
 ) -> CounterpartyCandidate | None:
     """Extract only identifiers stable enough to group without merging ledger rows."""
+    # A PDF line wrap can leave a space inside a handle ("name1234- 1@bank"); rejoin it first.
+    description = _WRAPPED_HANDLE.sub(r"\1-", description)
     match = _UPI_HANDLE.search(description)
     if match:
         handle = match.group(1).casefold()

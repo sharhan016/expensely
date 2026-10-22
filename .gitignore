@@ -43,3 +43,6 @@ test-results/
 .DS_Store
 .idea/
 .vscode/
+
+# Her real statements and passphrase (never committed)
+/reference-docs/
