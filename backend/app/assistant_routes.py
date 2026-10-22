@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -23,6 +24,7 @@ from app.models import (
     TransactionMeaning,
     User,
 )
+from app.money_in_motion import outstanding, pending_questions, summary_sentences
 from app.period_report import build_report, parse_range
 from app.schemas import AssistantMessageResponse, AssistantTurnRequest
 from app.security import current_user
@@ -314,6 +316,26 @@ def _workspace_answer(db: Session, user_id: int, message: str) -> tuple[str, dic
     )
 
 
+_MOTION_INTENT = re.compile(
+    r"still out|expect\w* (it )?back|owe me|owes me|sent out|come back|came back", re.I
+)
+
+
+def _motion_reply(db: Session, user_id: int, message: str) -> tuple[str, dict] | None:
+    if not _MOTION_INTENT.search(message):
+        return None
+    rows = outstanding(db, user_id)
+    text, evidence = summary_sentences(rows)
+    waiting = pending_questions(db, user_id)
+    if waiting:
+        text += (
+            f" I am also waiting to hear whether {len(waiting)} "
+            f"{'person' if len(waiting) == 1 else 'people'} you paid should be tracked as money "
+            "expected back."
+        )
+    return text, {"kind": "motion_summary", "evidence": evidence}
+
+
 def _investigate_reply(db: Session, user_id: int, message: str) -> tuple[str, dict] | None:
     """ "Where did my 1200 go" style questions, answered by the investigation tools."""
     if not wants_investigation(message):
@@ -399,7 +421,8 @@ def assistant_turn(
         reply, context = _import_reply(statements)
     else:
         reply, context = (
-            _investigate_reply(db, user.id, message)
+            _motion_reply(db, user.id, message)
+            or _investigate_reply(db, user.id, message)
             or _report_reply(db, user.id, message)
             or _workspace_reply(db, user.id, message)
         )

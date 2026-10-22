@@ -567,3 +567,43 @@ class WorkflowEvent(Base):
     machine_status: Mapped[str] = mapped_column(String(16), default="info")
     step_key: Mapped[str] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class MoneyExpectation(TimestampMixin, Base):
+    """Money she sent out and expects back. Created only when she says so."""
+
+    __tablename__ = "money_expectations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(
+        String(16), default="person"
+    )  # person|own_account|third_party
+    counterparty_id: Mapped[int | None] = mapped_column(
+        ForeignKey("counterparties.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id"), nullable=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True)
+    # tracking, or her own decision: written_off | not_expected. Settlement is computed.
+    status: Mapped[str] = mapped_column(String(16), default="tracking")
+    opened_on: Mapped[date] = mapped_column(Date)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+
+class ExpectationAllocation(TimestampMixin, Base):
+    """Part of one movement assigned to an expectation, as money out or as a return."""
+
+    __tablename__ = "expectation_allocations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    expectation_id: Mapped[int] = mapped_column(
+        ForeignKey("money_expectations.id", ondelete="CASCADE"), index=True
+    )
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(8))  # out | return
+    amount: Mapped[Decimal] = mapped_column(Numeric(16, 2))
+    status: Mapped[str] = mapped_column(
+        String(12), default="confirmed"
+    )  # confirmed|reverted|dismissed
+    decision_source: Mapped[str] = mapped_column(String(32), default="user_confirmed")

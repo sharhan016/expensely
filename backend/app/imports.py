@@ -28,6 +28,7 @@ from app.models import (
     TransactionMeaning,
     User,
 )
+from app.money_in_motion import sync_own_transfers
 from app.ownership import validate_financial_associations
 from app.parsers import ParseError, parse_statement
 from app.schemas import (
@@ -804,6 +805,7 @@ def confirm_import(
         )
         record_reconciliation(db, statement, account.id, statement_difference)
     sync_cash_markers(db, user.id)
+    sync_own_transfers(db, user.id)
     db.commit()
     return ImportConfirmResponse(
         imported=imported,

@@ -33,6 +33,7 @@ from app.models import (
     TransactionMeaningChange,
     User,
 )
+from app.motion_routes import router as motion_router
 from app.ownership import validate_financial_associations
 from app.report_routes import router as report_router
 from app.schemas import (
@@ -100,6 +101,7 @@ app.include_router(cash_router)
 app.include_router(workflow_router)
 app.include_router(report_router)
 app.include_router(investigate_router)
+app.include_router(motion_router)
 app.include_router(action_router)
 
 

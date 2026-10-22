@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bot, FileText, Paperclip, Send, Sparkles, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { MotionPanel } from "@/components/MotionPanel";
 import { InvestigationCard } from "@/components/InvestigationCard";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
 
@@ -132,6 +133,7 @@ export default function AssistantPage() {
 
         <div ref={feed} className="assistant-feed" aria-live="polite" aria-busy={loading || busy}>
           <WorkflowPanel refreshKey={panelKey} />
+          <MotionPanel refreshKey={panelKey} />
           {loading && <p className="assistant-status">Opening your private conversation…</p>}
           {!loading && messages.length === 0 && (
             <div className="assistant-welcome">

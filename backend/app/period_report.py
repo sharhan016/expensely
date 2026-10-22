@@ -25,9 +25,10 @@ from app.models import (
     TransactionLink,
     TransactionMeaning,
 )
+from app.money_in_motion import allocated_ids
 
 MAX_SPAN_DAYS = 366
-NEUTRAL_LINKS = ("card_payment", "refund", "reversal")
+NEUTRAL_LINKS = ("card_payment", "refund", "reversal", "own_transfer")
 OBLIGATION_PURPOSES = {
     Purpose.LOAN_GIVEN,
     Purpose.LOAN_REPAYMENT,
@@ -40,6 +41,8 @@ BUCKETS = (
     "refunds",
     "own_places",
     "cash_withdrawal",
+    "in_motion",
+    "returns",
     "obligations",
     "unexplained",
 )
@@ -49,6 +52,8 @@ BUCKET_LABELS = {
     "refunds": "Refunds",
     "own_places": "Moving between your own places",
     "cash_withdrawal": "Withdrawn as cash",
+    "in_motion": "Sent out, expected back",
+    "returns": "Returned to you",
     "obligations": "Loans, entrusted money and reimbursements",
     "unexplained": "Not yet explained",
 }
@@ -69,11 +74,22 @@ def money(value: Decimal) -> str:
     return f"{value:.2f}"
 
 
-def classify(transaction: Transaction, purpose: Purpose, linked: set[int], cash: set[int]) -> str:
+def classify(
+    transaction: Transaction,
+    purpose: Purpose,
+    linked: set[int],
+    cash: set[int],
+    in_motion: set[int] = frozenset(),
+    returned: set[int] = frozenset(),
+) -> str:
     if transaction.id in cash:
         return "cash_withdrawal"
     if transaction.id in linked or purpose == Purpose.TRANSFER:
         return "own_places"
+    if transaction.id in in_motion:
+        return "in_motion"  # only because she said it was sent out and expected back
+    if transaction.id in returned:
+        return "returns"  # a confirmed return is never income
     if purpose in OBLIGATION_PURPOSES:
         return "obligations"
     if purpose == Purpose.INCOME and transaction.amount > 0:
@@ -102,6 +118,8 @@ def period_rows(db: Session, user_id: int, start: date, end: date) -> list[dict]
     ):
         linked.update((link.outflow_transaction_id, link.inflow_transaction_id))
     cash = neutral_movement_ids(db, user_id)
+    in_motion = allocated_ids(db, user_id, "out")
+    returned = allocated_ids(db, user_id, "return")
     names = dict(
         db.execute(select(Account.id, Account.name).where(Account.user_id == user_id)).all()
     )
@@ -118,7 +136,7 @@ def period_rows(db: Session, user_id: int, start: date, end: date) -> list[dict]
                 "account_name": names.get(transaction.account_id, ""),
                 "description": transaction.description,
                 "amount": transaction.amount,
-                "bucket": classify(transaction, purpose, linked, cash),
+                "bucket": classify(transaction, purpose, linked, cash, in_motion, returned),
                 "counterparty_id": counterparty.id if counterparty else None,
                 "counterparty_name": counterparty.display_name if counterparty else "",
                 "counterparty_confirmed": bool(counterparty and counterparty.is_confirmed),
@@ -288,6 +306,14 @@ def summarize(start, end, count, people, incoming, coverage, buckets) -> str:
                 f"{'s' if unexplained['count'] != 1 else ''} "
                 f"(₹{money(unexplained['out'])} out, ₹{money(unexplained['in'])} in)."
             )
+        motion = buckets["in_motion"]
+        if motion["count"]:
+            text += (
+                f" Sent out and expected back: ₹{money(motion['out'])} (not counted as spending)."
+            )
+        returns = buckets["returns"]
+        if returns["count"]:
+            text += f" Returned to you: ₹{money(returns['in'])} (not counted as income)."
         spending = buckets["spending"]
         if spending["count"]:
             text += f" Marked as spending: ₹{money(spending['out'])}."
