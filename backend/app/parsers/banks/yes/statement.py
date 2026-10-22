@@ -79,7 +79,19 @@ def parse_credit_card(text: str) -> ParsedStatement:
     )
     card_number = re.compile(r"Card Number\s+([0-9Xx*\s-]{8,})", re.I)
     previous = re.search(r"Previous Balance\s*:\s*Rs\.\s*([\d,]+\.\d{2})\s*Dr", text, re.S)
-    total_due = re.search(r"Total Amount Due:.*?Rs\.\s*([\d,]+\.\d{2})", text, re.S)
+    total_due = re.search(r"Total Amount Due\s*:?\s*(?:Rs\.?\s*)?([\d,]+\.\d{2})", text, re.I)
+    minimum_due = re.search(r"Minimum Amount Due\s*:?\s*(?:Rs\.?\s*)?([\d,]+\.\d{2})", text, re.I)
+    available_credit = re.search(
+        r"Available Credit\s*:?\s*(?:Rs\.?\s*)?([\d,]+\.\d{2})", text, re.I
+    )
+    statement_balance = re.search(
+        r"Statement Balance\s*:?\s*(?:Rs\.?\s*)?([\d,]+\.\d{2})\s*(Dr|Cr)?", text, re.I
+    )
+    normalized_statement_balance = None
+    if statement_balance:
+        normalized_statement_balance = parse_amount(
+            f"{statement_balance.group(1)} {statement_balance.group(2) or 'Dr'}"
+        )
     return ParsedStatement(
         transactions=transactions,
         bank_slug="yes",
@@ -92,7 +104,13 @@ def parse_credit_card(text: str) -> ParsedStatement:
         period_start=parse_date(period.group(1)) if period else transactions[0].txn_date,
         period_end=parse_date(period.group(2)) if period else transactions[-1].txn_date,
         opening_balance=-parse_amount(previous.group(1)) if previous else None,
-        closing_balance=-parse_amount(total_due.group(1)) if total_due else None,
+        closing_balance=normalized_statement_balance,
+        statement_balance=(
+            abs(normalized_statement_balance) if normalized_statement_balance is not None else None
+        ),
+        total_amount_due=parse_amount(total_due.group(1)) if total_due else None,
+        minimum_amount_due=parse_amount(minimum_due.group(1)) if minimum_due else None,
+        available_credit=parse_amount(available_credit.group(1)) if available_credit else None,
     )
 
 

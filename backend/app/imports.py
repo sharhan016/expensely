@@ -106,6 +106,10 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
     statement.period_end = parsed.period_end
     statement.opening_balance = parsed.opening_balance
     statement.closing_balance = parsed.closing_balance
+    statement.statement_balance = parsed.statement_balance
+    statement.total_amount_due = parsed.total_amount_due
+    statement.minimum_amount_due = parsed.minimum_amount_due
+    statement.available_credit = parsed.available_credit
     if parsed.opening_balance is not None and parsed.closing_balance is not None:
         _, difference = calculate_reconciliation(
             parsed.opening_balance,

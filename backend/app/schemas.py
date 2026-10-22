@@ -158,6 +158,10 @@ class StatementImportResponse(ORMModel):
     period_end: date | None
     opening_balance: Decimal | None
     closing_balance: Decimal | None
+    statement_balance: Decimal | None
+    total_amount_due: Decimal | None
+    minimum_amount_due: Decimal | None
+    available_credit: Decimal | None
     reconciliation_status: str
     reconciliation_difference: Decimal | None
     overlap_warning: bool

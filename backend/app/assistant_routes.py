@@ -120,6 +120,21 @@ def _import_reply(statements: list[StatementImport]) -> tuple[str, dict]:
                     for category, count in sorted(card_categories.items())
                 )
                 lines.append(f"Card activity identified: {category_copy}.")
+            if statement.statement_kind == "credit_card":
+                card_amounts = []
+                if statement.total_amount_due is not None:
+                    card_amounts.append(f"total due {_money(statement.total_amount_due)}")
+                if statement.minimum_amount_due is not None:
+                    card_amounts.append(f"minimum due {_money(statement.minimum_amount_due)}")
+                if statement.available_credit is not None:
+                    card_amounts.append(f"available credit {_money(statement.available_credit)}")
+                if statement.statement_balance is not None:
+                    card_amounts.append(f"statement balance {_money(statement.statement_balance)}")
+                if card_amounts:
+                    lines.append(
+                        f"The card document reports {', '.join(card_amounts)}; these values are "
+                        "kept separate."
+                    )
             lines.append("It is ready for your review before I add it to the ledger.")
             reconciliation_results.append(
                 {"import_id": str(statement.id), "status": reconciliation}

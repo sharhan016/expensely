@@ -7,6 +7,33 @@
   text-transform: capitalize;
 }
 
+.card-statement-amounts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 20px 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line);
+}
+
+.card-statement-amounts div {
+  padding: 12px 14px;
+  background: var(--surface-muted);
+}
+
+.card-statement-amounts dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.card-statement-amounts dd {
+  margin: 5px 0 0;
+  color: var(--ink);
+  font: 500 14px "IBM Plex Mono", monospace;
+}
+
 .refund-link-panel {
   margin-bottom: 16px;
   overflow: hidden;
@@ -92,6 +119,10 @@
 }
 
 @media (max-width: 650px) {
+  .card-statement-amounts {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .flow-proposal {
     align-items: stretch;
     flex-direction: column;

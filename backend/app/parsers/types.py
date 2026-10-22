@@ -29,3 +29,7 @@ class ParsedStatement:
     period_end: date | None = None
     opening_balance: Decimal | None = None
     closing_balance: Decimal | None = None
+    statement_balance: Decimal | None = None
+    total_amount_due: Decimal | None = None
+    minimum_amount_due: Decimal | None = None
+    available_credit: Decimal | None = None
