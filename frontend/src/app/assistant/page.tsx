@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bot, FileText, Paperclip, Send, Sparkles, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { InvestigationCard } from "@/components/InvestigationCard";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 type MessageContext = {
@@ -153,7 +154,7 @@ export default function AssistantPage() {
             <article className={`assistant-message ${item.role}`} key={item.id}>
               <span>{item.role === "assistant" ? <Bot aria-hidden="true" /> : "You"}</span>
               <div>
-                <p>{item.content}</p>
+                {item.role === "assistant" && item.context.kind === "investigation" ? <InvestigationCard context={item.context as never} /> : <p>{item.content}</p>}
                 {item.role === "assistant" && item.context.review_required && (
                   <Link className="assistant-action" href="/imports">
                     Review statement <ArrowRight aria-hidden="true" />

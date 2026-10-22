@@ -10,6 +10,7 @@ from app.cash import cash_summary
 from app.coverage import date_label
 from app.coverage_service import coverage_sentence
 from app.database import get_db
+from app.investigate.planner import investigate, wants_investigation
 from app.models import (
     Account,
     AssistantMessage,
@@ -313,6 +314,15 @@ def _workspace_answer(db: Session, user_id: int, message: str) -> tuple[str, dic
     )
 
 
+def _investigate_reply(db: Session, user_id: int, message: str) -> tuple[str, dict] | None:
+    """ "Where did my 1200 go" style questions, answered by the investigation tools."""
+    if not wants_investigation(message):
+        return None
+    answer = investigate(db, user_id, message)
+    context = {key: value for key, value in answer.items() if key != "content"}
+    return answer["content"], {"kind": "investigation", **context}
+
+
 def _report_reply(db: Session, user_id: int, message: str) -> tuple[str, dict] | None:
     """Answer "5 October to 20 October" style requests from the period report."""
     last = db.scalar(
@@ -388,8 +398,10 @@ def assistant_turn(
     if statements:
         reply, context = _import_reply(statements)
     else:
-        reply, context = _report_reply(db, user.id, message) or _workspace_reply(
-            db, user.id, message
+        reply, context = (
+            _investigate_reply(db, user.id, message)
+            or _report_reply(db, user.id, message)
+            or _workspace_reply(db, user.id, message)
         )
     assistant_message = AssistantMessage(
         user_id=user.id,

@@ -51,3 +51,10 @@
 .report-actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.report-body h2{margin:18px 0 8px;font-size:15px}
 @media(min-width:640px){.report-form{grid-template-columns:200px 200px auto;align-items:end}}
 @media print{.side,.topbar,.menu-button,.report-form,.report-actions,.nav-scrim{display:none!important}.app-shell{display:block}}
+.period-glance{display:grid;gap:10px;margin:0 0 18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);font-size:13px;line-height:1.5}
+.period-glance p{margin:0}.period-glance dl{display:grid;gap:6px;margin:0}.period-glance dt{color:var(--muted);font-size:12px}.period-glance dd{margin:0;font-weight:600}
+@media(min-width:760px){.period-glance dl{grid-template-columns:repeat(4,1fr)}}
+.investigation-card ul{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.investigation-card li{display:grid;gap:4px;padding-bottom:10px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.5}
+.investigation-card li:last-child{border-bottom:0}.investigation-card small{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.investigation-card .claim-possible small{color:#8a5a00}.investigation-card .claim-close small{color:#8a5a00}.investigation-card .claim-question{font-weight:600}

@@ -21,6 +21,7 @@ from app.database import get_db
 from app.finance import router as finance_router
 from app.group_routes import router as group_router
 from app.imports import router as imports_router
+from app.investigate.routes import router as investigate_router
 from app.meanings import apply_meaning_change, ensure_meaning
 from app.models import (
     Account,
@@ -98,6 +99,7 @@ app.include_router(coverage_router)
 app.include_router(cash_router)
 app.include_router(workflow_router)
 app.include_router(report_router)
+app.include_router(investigate_router)
 app.include_router(action_router)
 
 

@@ -6,14 +6,14 @@ import { AppShell } from "@/components/AppShell";
 import { CoverageBanner } from "@/components/CoverageBanner";
 import Link from "next/link";
 import { api, inr } from "@/lib/api";
-import { asOfLabel } from "@/lib/ledger";
+import { asOfLabel, dateLabel } from "@/lib/ledger";
 import { WorkspaceState } from "@/components/WorkspaceState";
 
 export default function Home() {
   const [accent, setAccent] = useState(() =>
     typeof window === "undefined" ? "cobalt" : localStorage.getItem("expense-accent") ?? "cobalt",
   );
-  const [summary,setSummary]=useState({bank_balance:"0.00",credit_card_balance:"0.00",entrusted_balance:"0.00",available_balance:"0.00",company_receivable:"0.00",loan_balance:"0.00",unresolved_count:0,account_count:0,credit_card_count:0,as_of:null as string|null,is_stale:true,age_days:null as number|null});
+  const [summary,setSummary]=useState({bank_balance:"0.00",credit_card_balance:"0.00",entrusted_balance:"0.00",available_balance:"0.00",company_receivable:"0.00",loan_balance:"0.00",unresolved_count:0,account_count:0,period:null as null|{start:string;end:string;empty:boolean;summary:string;labels:Record<string,string>;buckets:Record<string,{count:number;out:string;in:string}>},credit_card_count:0,as_of:null as string|null,is_stale:true,age_days:null as number|null});
   const [activity,setActivity]=useState<{id:number;txn_date:string;description:string;account_id:number;amount:string;purpose:string}[]>([]),[accounts,setAccounts]=useState<Record<number,string>>({}),[name,setName]=useState(""),[loading,setLoading]=useState(true),[error,setError]=useState("");
   useEffect(()=>{Promise.all([api<typeof summary>("/dashboard"),api<{items:typeof activity}>("/transactions?limit=6"),api<{id:number;name:string}[]>("/accounts"),api<{display_name:string}>("/auth/me")]).then(([s,t,a,u])=>{setSummary(s);setActivity(t.items);setAccounts(Object.fromEntries(a.map(item=>[item.id,item.name])));setName(u.display_name.split(" ")[0])}).catch(reason=>setError(reason instanceof Error?reason.message:"Unable to load the dashboard")).finally(()=>setLoading(false))},[]);
   return (
@@ -32,6 +32,7 @@ export default function Home() {
         <Metric icon={<WalletCards/>} label="Your available funds" value={inr(summary.available_balance)} detail="For personal use" tone="green"/>
       </section>
 
+      {summary.period&&<section className="period-glance" aria-label="This period"><div><p className="kicker">{dateLabel(summary.period.start)} to {dateLabel(summary.period.end)}</p><p data-testid="period-summary">{summary.period.summary}</p></div>{!summary.period.empty&&<dl>{["spending","income","own_places","unexplained"].map(name=>{const b=summary.period!.buckets[name];return <div key={name}><dt>{summary.period!.labels[name]}</dt><dd>{inr(b.out)} out · {inr(b.in)} in</dd></div>})}</dl>}<Link className="text-button" href="/report">Open the full report →</Link></section>}
       <section className="signal-grid">
         <Signal label="Credit card balance" value={inr(summary.credit_card_balance)} detail={`Amount payable across ${summary.credit_card_count} card${summary.credit_card_count===1?"":"s"}`} icon={<WalletCards/>}/>
         <Signal label="Company receivable" value={inr(summary.company_receivable)} detail="Business expenses still recoverable" icon={<WalletCards/>}/>

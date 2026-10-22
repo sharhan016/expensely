@@ -1,6 +1,7 @@
+from datetime import date, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from app.models import (
     Person,
     Purpose,
     Reconciliation,
+    ReviewPeriod,
     StatementImport,
     Transaction,
     Trip,
@@ -22,6 +24,7 @@ from app.models import (
     User,
 )
 from app.ownership import validate_financial_associations
+from app.period_report import MAX_SPAN_DAYS, build_report
 from app.schemas import (
     ReconciliationCreate,
     RuleCreate,
@@ -35,8 +38,25 @@ from app.services import calculate_reconciliation, person_balances
 router = APIRouter(tags=["financial workspace"])
 
 
+def _dashboard_period(db: Session, user_id: int, start: date | None, end: date | None):
+    if start and end:
+        if end < start or (end - start).days >= MAX_SPAN_DAYS:
+            raise HTTPException(status_code=422, detail="Choose a period of up to a year")
+        return start, end
+    saved = db.scalar(select(ReviewPeriod).where(ReviewPeriod.user_id == user_id))
+    if saved and (saved.period_end - saved.period_start).days < MAX_SPAN_DAYS:
+        return saved.period_start, saved.period_end
+    today = date.today()
+    return today - timedelta(days=29), today
+
+
 @router.get("/dashboard")
-def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
+def dashboard(
+    start: date | None = Query(default=None, alias="from"),
+    end: date | None = Query(default=None, alias="to"),
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
     transactions = db.scalars(select(Transaction).where(Transaction.user_id == user.id)).all()
     balances = account_balances(db, user.id)
     bank_balances = [item for item in balances if item.instrument_type != "credit_card"]
@@ -68,6 +88,8 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user))
         "account_count": len(bank_balances),
         "credit_card_count": len(credit_balances),
         **overall_context(balances),
+        # Spending, income and neutral amounts come from the same service as the report page.
+        "period": build_report(db, user.id, *_dashboard_period(db, user.id, start, end)),
         "accounts": [balance_to_json(item) for item in balances],
     }
 

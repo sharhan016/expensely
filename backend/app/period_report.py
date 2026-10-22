@@ -257,7 +257,10 @@ def build_report(db: Session, user_id: int, start: date, end: date) -> dict:
 def summarize(start, end, count, people, incoming, coverage, buckets) -> str:
     span = f"{date_label(start)} to {date_label(end)}"
     if not count:
-        text = f"I have no movements recorded for {span}."
+        text = (
+            f"I have no movements recorded for {span}. "
+            "Send me the statements that cover these dates."
+        )
     else:
         confirmed = [p for p in people if p["confirmed"]]
         others = [p for p in people if not p["confirmed"]]
@@ -329,7 +332,7 @@ def export_table(rows: list[dict], delimiter: str) -> str:
 _MONTHS = {name.lower(): i for i, name in enumerate(calendar.month_name) if name}
 _MONTHS.update({name.lower(): i for i, name in enumerate(calendar.month_abbr) if name})
 _MONTHS["sept"] = 9
-_TO = r"(?:to|until|till|through|-|\u2013|\u2014)"
+_TO = r"(?:to|and|until|till|through|-|\u2013|\u2014)"
 _TEXT_RANGE = re.compile(
     rf"(\d{{1,2}})(?:st|nd|rd|th)?\s+([a-z]{{3,9}})(?:\s+(\d{{4}}))?\s*{_TO}\s*"
     r"(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})(?:\s+(\d{4}))?",

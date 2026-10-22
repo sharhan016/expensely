@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { api, inr } from "@/lib/api";
-import { dateLabel } from "@/lib/ledger";
+import { dateLabel, showingLabel } from "@/lib/ledger";
 
 type Bucket = { count: number; out: string; in: string };
 type Report = {
@@ -26,7 +26,7 @@ export default function ReportPage() {
   const [from, setFrom] = useState(isoDay(-30));
   const [to, setTo] = useState(isoDay(0));
   const [report, setReport] = useState<Report | null>(null);
-  const [rows, setRows] = useState<{ title: string; items: Row[] } | null>(null);
+  const [rows, setRows] = useState<{ title: string; extra: string; items: Row[]; total: number } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,9 +46,11 @@ export default function ReportPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "The report could not be built"); }
     finally { setBusy(false); }
   }
-  async function drill(title: string, extra: string) {
-    try { setRows({ title, items: await api<Row[]>(`/reports/period/rows?${query}${extra}`) }); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Rows could not be loaded"); }
+  async function drill(title: string, extra: string, offset = 0) {
+    try {
+      const page = await api<{ items: Row[]; total: number }>(`/reports/period/rows?${query}${extra}&limit=200&offset=${offset}`);
+      setRows(current => ({ title, extra, total: page.total, items: offset ? [...(current?.items ?? []), ...page.items] : page.items }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Rows could not be loaded"); }
   }
   async function copyTable() {
     setError("");
@@ -117,6 +119,8 @@ export default function ReportPage() {
                   <tr key={item.id}><td data-label="Date">{item.txn_date}</td><td data-label="Account">{item.account_name}</td><td data-label="Description">{item.description}</td><td data-label="Amount">{inr(item.amount)}</td></tr>
                 ))}
               </tbody></table></div>
+              <p className="records-count" role="status">{showingLabel(rows.items.length, rows.total)}</p>
+              {rows.items.length < rows.total && <button className="secondary" onClick={() => drill(rows.title, rows.extra, rows.items.length)}>Show more</button>}
             </>
           )}
         </section>

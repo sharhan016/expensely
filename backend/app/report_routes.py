@@ -42,17 +42,27 @@ def rows(
     end: date = Query(alias="to"),
     bucket: str | None = None,
     on: date | None = Query(default=None, alias="date"),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
     if bucket is not None and bucket not in BUCKETS:
         raise HTTPException(status_code=422, detail="Unknown bucket")
     found = period_rows(db, user.id, *_range(start, end))
-    return [
-        row_json(row)
+    chosen = [
+        row
         for row in found
         if (bucket is None or row["bucket"] == bucket) and (on is None or row["txn_date"] == on)
     ]
+    page = chosen[offset : offset + limit]
+    return {
+        "items": [row_json(row) for row in page],
+        "total": len(chosen),
+        "showing": len(page),
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 def _export(start, end, db, user, delimiter, media, extension) -> Response:
