@@ -78,7 +78,7 @@ def test_corrupt_pdf_failure_logs_no_content(workspace, privacy_probe):
     upload = _upload(workspace, body, "statement.pdf", "application/pdf")
 
     statement = upload.json()[0]
-    assert statement["status"] in {"failed", "password_required"}
+    assert statement["status"] == "failed"
     privacy_probe.record("stored_error_message", statement["error_message"])
     privacy_probe.assert_clean(*SECRETS)
 
