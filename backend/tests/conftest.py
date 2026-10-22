@@ -1,3 +1,5 @@
+import json
+import logging
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
@@ -110,3 +112,43 @@ def workspace() -> Iterator[TrustWorkspace]:
         yield TrustWorkspace(db, client, owner, stranger)
     app.dependency_overrides.clear()
     db.close()
+
+
+class PrivacyProbe:
+    """Collects everything a person debugging the system could later read, then checks it.
+
+    Captured: every log record (all loggers, any level) and any diagnostic payload a test hands
+    over with `record` (error bodies, stored error messages, future workflow events).
+    Successful business responses are not diagnostics, so they are not recorded by default.
+    """
+
+    def __init__(self, caplog: pytest.LogCaptureFixture):
+        self._caplog = caplog
+        self._payloads: list[tuple[str, str]] = []
+
+    def record(self, label: str, payload) -> None:
+        text = payload if isinstance(payload, str) else json.dumps(payload, default=str)
+        self._payloads.append((label, text))
+
+    def record_response(self, label: str, response) -> None:
+        """Record only failures; a 2xx body is the product's answer to its owner."""
+        if response.status_code >= 400:
+            self.record(label, response.text)
+
+    def diagnostics(self) -> str:
+        records = [
+            f"{record.name}|{record.getMessage()}|{record.exc_text or ''}"
+            for record in self._caplog.records
+        ]
+        return "\n".join(records + [f"{label}|{text}" for label, text in self._payloads])
+
+    def assert_clean(self, *secrets: str) -> None:
+        text = self.diagnostics()
+        leaked = [secret for secret in secrets if secret and secret in text]
+        assert not leaked, f"{len(leaked)} sensitive value(s) appeared in diagnostics"
+
+
+@pytest.fixture
+def privacy_probe(caplog: pytest.LogCaptureFixture) -> PrivacyProbe:
+    caplog.set_level(logging.DEBUG)
+    return PrivacyProbe(caplog)
