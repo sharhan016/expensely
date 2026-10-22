@@ -290,3 +290,51 @@ test("starts a statement workflow in the private assistant", async ({ page }) =>
   await expect(page.getByText("LUNCH")).toBeVisible();
   await expect(page.getByText("Flow: Ravi")).toBeVisible();
 });
+
+test("pages a long ledger honestly and dates every balance", async ({ page }) => {
+  const email = `paging-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Create a private workspace" }).click();
+  await page.getByLabel("Your name").fill("Paging Test");
+  await page.getByLabel("Email").fill(email);
+  await page.locator('input[name="password"]').fill("local-test-password");
+  await page.getByRole("button", { name: "Create workspace" }).click();
+
+  const rows = 205;
+  const start = Date.UTC(2026, 0, 1);
+  const lines = ["HDFC Bank Statement,,,,", "Date,Narration,Withdrawal,Deposit,Closing Balance"];
+  for (let index = 0; index < rows; index += 1) {
+    const day = new Date(start + index * 86_400_000);
+    const stamp = `${String(day.getUTCDate()).padStart(2, "0")}/${String(day.getUTCMonth() + 1).padStart(2, "0")}/${day.getUTCFullYear()}`;
+    lines.push(`${stamp},UPI SYNTHETIC ROW ${index},10.00,,${(1_000_000 - 10 * (index + 1)).toFixed(2)}`);
+  }
+  const lastDay = new Date(start + (rows - 1) * 86_400_000);
+  const lastLabel = `${lastDay.getUTCDate()} ${lastDay.toLocaleString("en-GB", { month: "short", timeZone: "UTC" })} ${lastDay.getUTCFullYear()}`;
+
+  await page.getByRole("link", { name: "Accounts & Import" }).click();
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "hdfc-long.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(lines.join("\n") + "\n"),
+  });
+  await page.getByRole("button", { name: "Extract transactions" }).click();
+  await expect(page.getByText("Extraction result")).toBeVisible();
+  await page.getByRole("button", { name: /Confirm to ledger/ }).click();
+  await expect(page.getByText(new RegExp(`${rows} transactions added to the ledger`))).toBeVisible();
+
+  await page.getByRole("link", { name: "Transactions" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /^Showing 200 of 205/ })).toBeVisible();
+  await expect(page.getByText("UPI SYNTHETIC ROW 204")).toBeVisible();
+  await expect(page.getByText("UPI SYNTHETIC ROW 0", { exact: true })).toHaveCount(0);
+  // Newest row's balance is the exact backend figure, formatted only.
+  await expect(page.getByRole("row").filter({ hasText: "UPI SYNTHETIC ROW 204" })).toContainText("₹9,97,950.00");
+
+  await page.getByRole("button", { name: "Show more" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /^Showing all 205/ })).toBeVisible();
+  await expect(page.getByText("UPI SYNTHETIC ROW 0", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show more" })).toHaveCount(0);
+
+  await page.goto("/");
+  await expect(page.getByRole("status").filter({ hasText: `As of ${lastLabel}` })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "not today's balance" })).toBeVisible();
+});
