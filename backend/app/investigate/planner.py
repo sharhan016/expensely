@@ -24,6 +24,14 @@ TOOL_LABELS = {
     "balance_discontinuities": "balance connections",
     "coverage_gaps": "coverage",
     "unresolved_in_window": "unresolved movements",
+    "open_expectations": "expectation records",
+    "related_links": "linked movements",
+}
+_LINK_WORDS = {
+    "own_transfer": "own transfer",
+    "card_payment": "card payment",
+    "refund": "refund",
+    "reversal": "reversal",
 }
 NOTE = "A match is a record, not an explanation. I cannot tell from the records why money moved."
 ASK_AMOUNT = "Which amount are you looking for? For example: where did my 1200 go."
@@ -155,6 +163,9 @@ def investigate(db: Session, user_id: int, message: str, *, today: date | None =
             f"I found {count} of exactly {money}: {listed}{more}.",
             [(m["evidence"], _txn_label(m)) for m in exact],
         )
+    if exact:
+        ran += ["open_expectations", "related_links"]
+        _recorded_facts(db, user_id, exact[:3], answer, failures)
     for m in near[:5]:
         matched = True
         verb = "money out of" if m["direction"] == "out" else "money in of"
@@ -271,6 +282,96 @@ def investigate(db: Session, user_id: int, message: str, *, today: date | None =
         question = ASK_ACCOUNT if explicit else ASK_WHEN
         answer.add("question", question)
     return _finish(answer, amount, window, question, ran, explicit=bool(explicit))
+
+
+def _recorded_facts(db, user_id, matches, answer, failures) -> None:
+    """What the records say about each exact match: an expectation, a return, a link. Templates
+    only: it states how she recorded things, never why money moved."""
+    said: set[str] = set()
+    for m in matches:
+        amount = _rupees(abs(Decimal(m["amount"])))
+        data = _run(
+            "open_expectations", db, user_id, {"transaction_id": m["transaction_id"]}, failures
+        )
+        for item in (data or {"expectations": []})["expectations"]:
+            sent = _rupees(Decimal(item["sent"]))
+            since = date_label(date.fromisoformat(item["since"]))
+            refs = [
+                m["evidence"],
+                *item["evidence"],
+                *(item["returns"] if item["role"] == "return" else []),
+            ]
+            if item["role"] == "out" and item["status"] == "written_off":
+                kind, text = (
+                    "fact",
+                    (
+                        f"This is part of {sent} you marked as sent out and later wrote off. "
+                        "That is how you recorded it, not a cause."
+                    ),
+                )
+            elif item["role"] == "out":
+                left = _rupees(Decimal(item["remaining"]))
+                tail = (
+                    f"{left} is still out"
+                    if Decimal(item["remaining"]) > 0
+                    else "all of it has come back"
+                )
+                kind, text = (
+                    "fact",
+                    (
+                        f"This is part of {sent} you marked as sent out and expected back since "
+                        f"{since}; {tail}. That is how you recorded it, not a cause."
+                    ),
+                )
+            elif item["role"] == "return":
+                kind, text = (
+                    "fact",
+                    (
+                        f"You confirmed this incoming {amount} as a return of money you had sent "
+                        "out."
+                    ),
+                )
+            elif item["role"] == "proposal":
+                kind, text = (
+                    "fact",
+                    (
+                        f"This incoming {amount} may be a return of money you expect back; it is "
+                        "waiting for your confirmation."
+                    ),
+                )
+            else:
+                continue
+            if text not in said:
+                said.add(text)
+                answer.add(kind, text, [(r, _ref_label(r)) for r in dict.fromkeys(refs)])
+        links = _run(
+            "related_links", db, user_id, {"transaction_id": m["transaction_id"]}, failures
+        )
+        for link in (links or {"links": []})["links"]:
+            if link["status"] != "confirmed" or not link["other_date"]:
+                continue
+            word = _LINK_WORDS.get(link["link_type"], "link")
+            text = (
+                f"This movement is linked to another one ({word}) on "
+                f"{date_label(date.fromisoformat(link['other_date']))}."
+            )
+            if text not in said:
+                said.add(text)
+                answer.add(
+                    "fact",
+                    text,
+                    [
+                        (m["evidence"], _ref_label(m["evidence"])),
+                        (link["evidence"], _ref_label(link["evidence"])),
+                    ],
+                )
+    for name in ("open_expectations", "related_links"):
+        if name in failures:
+            answer.add("error", _error_text(name))
+
+
+def _ref_label(ref: str) -> str:
+    return "A record behind this" if ref.startswith("txn:") else ref
 
 
 def _error_text(name: str) -> str:

@@ -607,3 +607,18 @@ class ExpectationAllocation(TimestampMixin, Base):
         String(12), default="confirmed"
     )  # confirmed|reverted|dismissed
     decision_source: Mapped[str] = mapped_column(String(32), default="user_confirmed")
+
+
+class MotionPreference(Base):
+    """A choice she asked to remember for one person. Applies only to payments added later."""
+
+    __tablename__ = "motion_preferences"
+    __table_args__ = (UniqueConstraint("user_id", "counterparty_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    counterparty_id: Mapped[int] = mapped_column(
+        ForeignKey("counterparties.id", ondelete="CASCADE"), index=True
+    )
+    choice: Mapped[str] = mapped_column(String(16))  # expense | expected_back
+    after_transaction_id: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

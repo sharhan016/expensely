@@ -59,3 +59,5 @@
 .investigation-card li:last-child{border-bottom:0}.investigation-card small{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 .investigation-card .claim-possible small{color:#8a5a00}.investigation-card .claim-close small{color:#8a5a00}.investigation-card .claim-question{font-weight:600}
 .motion-outstanding{margin:0;padding:0;list-style:none;display:grid;gap:8px}.motion-outstanding li{display:grid;gap:4px;padding-top:8px;border-top:1px solid var(--line)}
+.motion-remember{display:flex;align-items:center;gap:8px;min-height:44px;font-size:12px;color:var(--muted)}
+.workflow-question small{color:var(--muted);line-height:1.5}

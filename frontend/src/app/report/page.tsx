@@ -7,7 +7,7 @@ import { dateLabel, showingLabel } from "@/lib/ledger";
 
 type Bucket = { count: number; out: string; in: string };
 type Report = {
-  start: string; end: string; movement_count: number; empty: boolean; summary: string; cash_note: string;
+  obligation_note: string; start: string; end: string; movement_count: number; empty: boolean; summary: string; cash_note: string;
   buckets: Record<string, Bucket>; labels: Record<string, string>;
   days: { date: string; count: number; out: string; in: string }[];
   counterparties: { name: string; confirmed: boolean; count: number; out: string }[];
@@ -100,6 +100,7 @@ export default function ReportPage() {
                   </tr>
                 ))}
               </tbody></table></div>
+              {report.buckets.obligations.count > 0 && <p className="records-note" data-testid="obligation-note">{report.obligation_note}</p>}
               <h2>Day by day</h2>
               <div className="table-scroll"><table className="responsive-table"><thead><tr><th>Date</th><th>Movements</th><th>Out</th><th>In</th></tr></thead><tbody>
                 {report.days.map(day => (

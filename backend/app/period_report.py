@@ -15,7 +15,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.cash import neutral_movement_ids
+from app.cash import _rupees, neutral_movement_ids
 from app.coverage import date_label
 from app.coverage_service import account_entry
 from app.models import (
@@ -43,6 +43,7 @@ BUCKETS = (
     "cash_withdrawal",
     "in_motion",
     "returns",
+    "written_off",
     "obligations",
     "unexplained",
 )
@@ -54,6 +55,7 @@ BUCKET_LABELS = {
     "cash_withdrawal": "Withdrawn as cash",
     "in_motion": "Sent out, expected back",
     "returns": "Returned to you",
+    "written_off": "Written off (not counted)",
     "obligations": "Loans, entrusted money and reimbursements",
     "unexplained": "Not yet explained",
 }
@@ -70,6 +72,15 @@ _KIND_TEXT = {
 }
 
 
+OBLIGATION_NOTE = (
+    "Entrusted money and reimbursements stay in their own group and are never converted into "
+    "'sent out, expected back'. Entrusted money is held for someone else, so it is not money you "
+    "expect back. A reimbursement settles a business expense with your employer; it is not a "
+    "return of money you lent. They relate to an expectation only if you separately say a "
+    "payment to a person should come back. Loans you recorded can be proposed as expectations."
+)
+
+
 def money(value: Decimal) -> str:
     return f"{value:.2f}"
 
@@ -81,6 +92,7 @@ def classify(
     cash: set[int],
     in_motion: set[int] = frozenset(),
     returned: set[int] = frozenset(),
+    written_off: set[int] = frozenset(),
 ) -> str:
     if transaction.id in cash:
         return "cash_withdrawal"
@@ -88,6 +100,8 @@ def classify(
         return "own_places"
     if transaction.id in in_motion:
         return "in_motion"  # only because she said it was sent out and expected back
+    if transaction.id in written_off:
+        return "written_off"  # her decision; shown on its own line, not counted as spending
     if transaction.id in returned:
         return "returns"  # a confirmed return is never income
     if purpose in OBLIGATION_PURPOSES:
@@ -118,7 +132,8 @@ def period_rows(db: Session, user_id: int, start: date, end: date) -> list[dict]
     ):
         linked.update((link.outflow_transaction_id, link.inflow_transaction_id))
     cash = neutral_movement_ids(db, user_id)
-    in_motion = allocated_ids(db, user_id, "out")
+    in_motion = allocated_ids(db, user_id, "out", ("tracking",))
+    written_off = allocated_ids(db, user_id, "out", ("written_off",))
     returned = allocated_ids(db, user_id, "return")
     names = dict(
         db.execute(select(Account.id, Account.name).where(Account.user_id == user_id)).all()
@@ -136,7 +151,9 @@ def period_rows(db: Session, user_id: int, start: date, end: date) -> list[dict]
                 "account_name": names.get(transaction.account_id, ""),
                 "description": transaction.description,
                 "amount": transaction.amount,
-                "bucket": classify(transaction, purpose, linked, cash, in_motion, returned),
+                "bucket": classify(
+                    transaction, purpose, linked, cash, in_motion, returned, written_off
+                ),
                 "counterparty_id": counterparty.id if counterparty else None,
                 "counterparty_name": counterparty.display_name if counterparty else "",
                 "counterparty_confirmed": bool(counterparty and counterparty.is_confirmed),
@@ -263,6 +280,7 @@ def build_report(db: Session, user_id: int, start: date, end: date) -> dict:
             for p in people
         ],
         "coverage": coverage,
+        "obligation_note": OBLIGATION_NOTE,
         "cash_note": (
             f"Withdrawn as cash: ₹{money(cash['out'])}. I cannot see how it was spent."
             if cash["count"]
@@ -309,11 +327,14 @@ def summarize(start, end, count, people, incoming, coverage, buckets) -> str:
         motion = buckets["in_motion"]
         if motion["count"]:
             text += (
-                f" Sent out and expected back: ₹{money(motion['out'])} (not counted as spending)."
+                f" Sent out and expected back: {_rupees(motion['out'])} (not counted as spending)."
             )
+        gone = buckets["written_off"]
+        if gone["count"]:
+            text += f" Written off (not counted): {_rupees(gone['out'])}."
         returns = buckets["returns"]
         if returns["count"]:
-            text += f" Returned to you: ₹{money(returns['in'])} (not counted as income)."
+            text += f" Returned to you: {_rupees(returns['in'])} (not counted as income)."
         spending = buckets["spending"]
         if spending["count"]:
             text += f" Marked as spending: ₹{money(spending['out'])}."

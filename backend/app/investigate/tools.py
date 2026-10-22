@@ -88,6 +88,10 @@ class RelatedLinksIn(BaseModel):
     transaction_id: int = Field(ge=1, le=2**31 - 1)
 
 
+class OpenExpectationsIn(BaseModel):
+    transaction_id: int | None = Field(default=None, ge=1, le=2**31 - 1)
+
+
 class UnresolvedIn(RequiredWindow):
     limit: int = Field(default=50, ge=1, le=200)
 
@@ -207,8 +211,10 @@ def related_links(db: Session, user_id: int, data: RelatedLinksIn) -> dict:
     for link in links:
         is_out = link.outflow_transaction_id == transaction.id
         other = link.inflow_transaction_id if is_out else link.outflow_transaction_id
+        partner = db.get(Transaction, other)
         out.append(
             {
+                "other_date": partner.txn_date.isoformat() if partner else None,
                 "link_id": link.id,
                 "link_type": link.link_type,
                 "status": link.status,
@@ -222,6 +228,40 @@ def related_links(db: Session, user_id: int, data: RelatedLinksIn) -> dict:
         "links": out,
         "cash_withdrawal": transaction.id in neutral_movement_ids(db, user_id),
     }
+
+
+def open_expectations(db: Session, user_id: int, data: OpenExpectationsIn) -> dict:
+    """What she marked as sent out and expected back, and returns waiting for her confirmation.
+    With a transaction id, only the expectations that movement belongs to (or may settle)."""
+    from app.money_in_motion import outstanding, return_proposals
+
+    ref = None
+    if data.transaction_id is not None:
+        if not db.scalar(
+            select(Transaction.id).where(
+                Transaction.id == data.transaction_id, Transaction.user_id == user_id
+            )
+        ):
+            raise ToolError("not_found")
+        ref = f"txn:{data.transaction_id}"
+    proposals = [
+        item for item in return_proposals(db, user_id) if ref is None or item["evidence"] == ref
+    ]
+    pending = {item["expectation_id"] for item in proposals}
+    items = []
+    for item in outstanding(db, user_id):
+        if item["status"] == "not_expected":
+            continue
+        role = None
+        if ref and ref in item["evidence"]:
+            role = "out"
+        elif ref and ref in item["returns"]:
+            role = "return"
+        elif item["expectation_id"] in pending:
+            role = "proposal"
+        if ref is None or role:
+            items.append({**item, "role": role})
+    return {"expectations": items, "return_proposals": proposals}
 
 
 def unresolved_in_window(db: Session, user_id: int, data: UnresolvedIn) -> dict:
@@ -313,6 +353,7 @@ TOOLS = {
     "find_by_amount": (FindByAmountIn, find_by_amount),
     "find_cash_withdrawals": (FindCashIn, find_cash_withdrawals),
     "related_links": (RelatedLinksIn, related_links),
+    "open_expectations": (OpenExpectationsIn, open_expectations),
     "unresolved_in_window": (UnresolvedIn, unresolved_in_window),
     "coverage_gaps": (CoverageGapsIn, coverage_gaps),
     "balance_discontinuities": (DiscontinuitiesIn, balance_discontinuities),
