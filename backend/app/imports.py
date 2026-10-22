@@ -1,5 +1,6 @@
 import uuid
 from collections import Counter
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -653,9 +654,20 @@ def confirm_import(
             strict=True,
         )
     )
+    # Ledger amounts that make up THIS statement: rows it posted plus rows proven to be re-imports
+    # of movements already in the ledger. Rows the user deselected on purpose are excluded.
+    statement_amounts: list[Decimal] = []
     for row in ordered_rows:
         if not row.selected:
             skipped += int(row.duplicate_of_id is not None)
+            if row.duplicate_of_id is not None:
+                matched_amount = db.scalar(
+                    select(Transaction.amount).where(
+                        Transaction.id == row.duplicate_of_id, Transaction.user_id == user.id
+                    )
+                )
+                if matched_amount is not None:
+                    statement_amounts.append(matched_amount)
             continue
         associations = row_associations[row.id]
         fingerprint = dedupe_hash(
@@ -666,12 +678,14 @@ def confirm_import(
             row.reference,
             row_ordinals[row.id],
         )
-        if db.scalar(
-            select(Transaction.id).where(
+        already_posted = db.scalar(
+            select(Transaction.amount).where(
                 Transaction.user_id == user.id, Transaction.dedupe_hash == fingerprint
             )
-        ):
+        )
+        if already_posted is not None:
             skipped += 1
+            statement_amounts.append(already_posted)
             continue
         movement = Transaction(
             user_id=user.id,
@@ -705,6 +719,7 @@ def confirm_import(
         )
         db.add(movement)
         posted_movements.append(movement)
+        statement_amounts.append(row.amount)
         imported += 1
     statement.account_id = account.id
     statement.status = ImportStatus.CONFIRMED
@@ -713,13 +728,19 @@ def confirm_import(
         sync_transaction_group(db, movement)
     linked_card_payments = len(match_card_payments(db, user.id))
     linked_refunds = len(match_card_refunds(db, user.id))
+    statement_difference = period_difference = None
     if (
         statement.period_start
         and statement.period_end
         and statement.opening_balance is not None
         and statement.closing_balance is not None
     ):
-        movements = list(
+        # The statement is judged on its own movements; the whole-period view is reported
+        # separately so rows from other statements never make this statement look wrong.
+        _, statement_difference = calculate_reconciliation(
+            statement.opening_balance, statement_amounts, statement.closing_balance
+        )
+        period_movements = list(
             db.scalars(
                 select(Transaction.amount).where(
                     Transaction.user_id == user.id,
@@ -728,8 +749,8 @@ def confirm_import(
                 )
             )
         )
-        _, difference = calculate_reconciliation(
-            statement.opening_balance, movements, statement.closing_balance
+        _, period_difference = calculate_reconciliation(
+            statement.opening_balance, period_movements, statement.closing_balance
         )
         reconciliation = db.scalar(
             select(Reconciliation).where(
@@ -749,7 +770,7 @@ def confirm_import(
                 statement_closing_balance=statement.closing_balance,
             )
             db.add(reconciliation)
-        reconciliation.status = "balanced" if difference == 0 else "difference"
+        reconciliation.status = "balanced" if statement_difference == 0 else "difference"
     db.commit()
     return ImportConfirmResponse(
         imported=imported,
@@ -757,4 +778,6 @@ def confirm_import(
         account_id=account.id,
         linked_card_payments=linked_card_payments,
         linked_refunds=linked_refunds,
+        statement_difference=statement_difference,
+        period_difference=period_difference,
     )

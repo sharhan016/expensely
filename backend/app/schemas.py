@@ -208,6 +208,8 @@ class ImportConfirmResponse(BaseModel):
     account_id: int
     linked_card_payments: int = 0
     linked_refunds: int = 0
+    statement_difference: Decimal | None = None
+    period_difference: Decimal | None = None
 
 
 class PossiblyMissedRow(BaseModel):
