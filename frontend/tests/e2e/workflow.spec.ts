@@ -312,3 +312,26 @@ test("a recorded loan is proposed as an expectation, accepted and reverted at 39
   await expect(page.getByTestId("obligation-note")).toContainText("Entrusted money and reimbursements stay in their own group");
   await noSideScroll(page);
 });
+
+test("many people to ask about are asked one at a time, largest first, at 390px", async ({ page }) => {
+  await registerFresh(page, "queue");
+  const pay = (date: string, handle: string, amount: string, balance: string) =>
+    `${date},UPI/DR/001/PAYEE/YESB/${handle}@okaxis/SYNTHETIC,${amount},,${balance}\n`;
+  await confirmUpload(
+    page,
+    "jan-queue.csv",
+    header + pay("05/01/2026", "alpha", "100.00", "900.00") + pay("06/01/2026", "bravo", "700.00", "200.00") + pay("07/01/2026", "charlie", "50.00", "150.00"),
+  );
+  await page.goto("/assistant");
+  const question = page.getByRole("group", { name: /Question about/ });
+  await expect(question).toHaveCount(1, { timeout: 30_000 });
+  await expect(question).toContainText("totalling ₹700.00"); // the largest first
+  await expect(question).toContainText("Question 1 of 3");
+  await noSideScroll(page);
+
+  await question.getByRole("button", { name: "Ask me later" }).click();
+  await expect(page.getByRole("group", { name: /Question about/ })).toContainText("totalling ₹100.00");
+  await page.getByRole("group", { name: /Question about/ }).getByRole("button", { name: "It was an expense" }).click();
+  await expect(page.getByRole("group", { name: /Question about/ })).toContainText("totalling ₹50.00");
+  await expect(page.getByRole("group", { name: /Question about/ })).toContainText("Question 1 of 2");
+});
