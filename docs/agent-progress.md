@@ -45,6 +45,13 @@ Known gaps found: a corrupt PDF is classified `password_required`; legacy `legac
 
 Known limits: only tests using the shared `workspace` fixture run on PostgreSQL (older test modules build their own SQLite engines); recompute judges a statement on its own rows, so a movement added from elsewhere invalidates the period but a re-check can restore it; card reconciliation is not built; the manual `POST /reconciliations` still writes rows without a fingerprint (they read as unverified).
 
+## End-to-end test account and PDF checks
+
+- Playwright global setup (`frontend/tests/e2e/global-setup.ts`) creates a shared account from the git-ignored `.env.e2e` (random password, mode 0600, generated on first run), signs in and saves the session to `frontend/tests/e2e/.auth/user.json` (also ignored). The `signed-in` project in `playwright.config.ts` starts authenticated; the default project still registers throwaway users.
+- `frontend/tests/e2e/pdf-fixtures.ts` renders synthetic statements to PDF with Chromium and builds expected rows in integer paise. `signed-in.spec.ts` uploads one through the assistant and checks that the assistant's totals, the review table (row by row), the ledger and exact running balances all match what the PDF says, including two identical same-day rows.
+- The shared account keeps data between local runs; run `make test-db-reset` for a clean slate. Failure artifacts under `frontend/test-results` can contain the test password; they are git-ignored.
+- Fixed while building this: a failed PDF read showed an empty "Extraction result" with a Confirm button and no reason, and failed imports stayed pending forever, hiding the upload zone.
+
 ## Current outcome
 
 The application now supports a meaningful first vertical slice:

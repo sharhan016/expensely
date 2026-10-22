@@ -8,6 +8,8 @@
 # Local configuration and secrets
 .env
 .env.local
+.env.e2e
+/frontend/tests/e2e/.auth/
 *.pem
 
 # Python

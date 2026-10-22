@@ -16,7 +16,17 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  globalSetup: "./tests/e2e/global-setup.ts",
+  projects: [
+    // Registration and import flows that create their own throwaway users.
+    { name: "chromium", testIgnore: /signed-in\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
+    // Specs that start already signed in as the shared account from the git-ignored .env.e2e.
+    {
+      name: "signed-in",
+      testMatch: /signed-in\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], storageState: "tests/e2e/.auth/user.json" },
+    },
+  ],
   webServer: [
     {
       command: `cd ../backend && DATABASE_URL="${testDatabaseUrl}" FRONTEND_ORIGIN="http://127.0.0.1:3100" .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 18000`,

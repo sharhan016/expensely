@@ -406,3 +406,31 @@ test("shows what my records cover, bridges a gap visibly and tracks cash", async
   await page.goto("/");
   await expect(page.getByTestId("coverage-banner")).toContainText("reconciled through 10 Mar 2026");
 });
+
+test("a PDF that cannot be read is explained on the import page and never blocks the next upload", async ({ page }) => {
+  const email = `damaged-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Create a private workspace" }).click();
+  await page.getByLabel("Your name").fill("Damaged Test");
+  await page.getByLabel("Email").fill(email);
+  await page.locator('input[name="password"]').fill("local-test-password");
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page).toHaveURL("/");
+
+  await page.goto("/imports");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "damaged.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4 this is not a real document"),
+  });
+  await page.getByRole("button", { name: "Extract transactions" }).click();
+  const alert = page.getByRole("alert").filter({ hasText: "damaged.pdf could not be read" });
+  await expect(alert).toContainText("We could not read this PDF");
+  await expect(alert).toContainText("Nothing was added to your ledger");
+  await expect(page.getByRole("button", { name: /Confirm to ledger/ })).toHaveCount(0);
+  await expect(page.getByText("Enter the PDF password")).toHaveCount(0);
+
+  // After a reload the failed read is gone and the upload zone is back.
+  await page.reload();
+  await expect(page.getByText("Drop bank statements here")).toBeVisible();
+});
