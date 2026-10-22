@@ -3,7 +3,7 @@
 Last updated: 2026-10-22  
 Branch: `agentic-development`  
 Source specification: `expense-analyzer-agent-first-workflow-prompt.md`
-Current plan: `docs/alignment-and-plan.md` (Increments 1a, 1b and 2 done; Increment 3 awaits approval)
+Current plan: `docs/alignment-and-plan.md` (Increments 1a, 1b, 2 and a basic 3 done)
 
 ## How to use this file
 
@@ -61,6 +61,15 @@ Known limits: only tests using the shared `workspace` fixture run on PostgreSQL 
 - Fixed on the way: pdfminer logged raw statement text at DEBUG (now pinned to WARNING); concurrent starts with the same client key raced on the unique constraint.
 - Correction: the earlier commit message "all 108 tests pass on PostgreSQL" overstated. Only tests using the shared `workspace` fixture ran on PostgreSQL; older modules build their own SQLite engines. History was not rewritten.
 - Known limits: statement parsing is still synchronous inside the upload request (events are written stage by stage but not streamed); the in-memory saver is used on SQLite unit tests, so durable resume is proven on PostgreSQL only; there is no end-to-end browser test for an encrypted PDF (the backend test uses a real encrypted PDF).
+
+## Increment 3: basic period report (done 2026-10-22)
+
+- `app/period_report.py` is the one place that decides what is neutral. Buckets: marked as spending, marked as income, refunds, moving between own places (linked card payments, refund/reversal pairs, transfer purpose), withdrawn as cash (cash markers), loans/entrusted/reimbursements, not yet explained. Unresolved rows are never called spending. Every total drills down to its rows (`/reports/period/rows`). The dashboard does not use this yet.
+- `GET /reports/period`, `/period/rows`, `/period.csv`, `/period.tsv` (owner-scoped, up to a year). Text columns are neutralized against spreadsheet formulas; amounts stay plain numbers.
+- Coverage notes name the dates not covered by checked statements and flag gaps, acknowledged dates and mismatches inside the range; the report is labeled partial.
+- Assistant: "5 October to 20 October" style requests; an inferred year is confirmed first, an explicit one is answered directly.
+- UI: Report page (copy as table, Download CSV, browser Print). The duplicate coverage banner was removed from the assistant page; it remains on Home.
+- Not built: PDF generation, charts, grouping beyond counterparties (confirmed names listed; unconfirmed detected names counted separately).
 
 ## Current outcome
 
