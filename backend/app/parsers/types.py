@@ -19,6 +19,9 @@ class ParsedStatement:
     account_name: str = ""
     source_hint: str = ""
     statement_kind: str = "bank"
+    instrument_confidence: str = "unknown"
+    parser_name: str = "generic_table"
+    parser_version: str = "1"
     period_start: date | None = None
     period_end: date | None = None
     opening_balance: Decimal | None = None

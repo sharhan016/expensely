@@ -76,9 +76,55 @@ Date Transaction Details Merchant Category Amount (Rs.)
     assert parsed.statement_kind == "credit_card"
     assert parsed.account_name == "YES BANK Uni RuPay Credit Card"
     assert parsed.source_hint.endswith("9405")
+    assert parsed.instrument_confidence == "high"
+    assert parsed.parser_name == "yes_credit_card"
     assert parsed.opening_balance == Decimal("-19329.72")
     assert parsed.closing_balance == Decimal("-10410.16")
     assert [row.amount for row in parsed.transactions] == [
         Decimal("-1000.00"),
         Decimal("19380.72"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("account_type", "expected_kind", "expected_name"),
+    [
+        ("Current", "current", "YES BANK Current Account"),
+        ("Savings", "savings", "YES BANK Savings Account"),
+    ],
+)
+def test_yes_deposit_statement_detects_instrument_from_document_evidence(
+    tmp_path, account_type, expected_kind, expected_name
+):
+    statement = tmp_path / "yes.csv"
+    statement.write_text(
+        "YES BANK Statement,,,,\n"
+        f"Account Type: {account_type},,,,\n"
+        "Account Number: 0012XXXX9405,,,,\n"
+        "Date,Narration,Withdrawal,Deposit,Closing Balance\n"
+        "01/04/2026,UPI WATER,160.00,,99840.00\n"
+    )
+
+    parsed = parse_statement(statement)
+
+    assert parsed.bank_slug == "yes"
+    assert parsed.statement_kind == expected_kind
+    assert parsed.account_name == expected_name
+    assert parsed.source_hint.endswith("9405")
+    assert parsed.instrument_confidence == "high"
+    assert parsed.parser_name == "yes_deposit_table"
+
+
+def test_yes_deposit_statement_does_not_guess_instrument_without_evidence(tmp_path):
+    statement = tmp_path / "yes.csv"
+    statement.write_text(
+        "YES BANK Statement,,,,\n"
+        "Account Number: 0012XXXX9405,,,,\n"
+        "Date,Narration,Withdrawal,Deposit,Closing Balance\n"
+        "01/04/2026,UPI WATER,160.00,,99840.00\n"
+    )
+
+    parsed = parse_statement(statement)
+
+    assert parsed.statement_kind == "bank"
+    assert parsed.instrument_confidence == "unknown"

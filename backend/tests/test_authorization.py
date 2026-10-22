@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
+from app.imports import _stage_parsed
 from app.main import app
 from app.models import (
     Account,
@@ -25,6 +26,7 @@ from app.models import (
     User,
 )
 from app.ownership import validate_financial_associations
+from app.parsers.types import ParsedStatement, ParsedTransaction
 from app.security import create_session
 
 
@@ -306,6 +308,77 @@ def test_unknown_bank_can_be_confirmed_after_explicit_identification(api_context
     assert created.name == "Daily account"
     context["db"].refresh(context["statement"])
     assert context["statement"].bank_slug == "yes"
+
+
+def test_statement_parser_evidence_survives_staging_and_api_response(api_context):
+    context = api_context
+    parsed = ParsedStatement(
+        transactions=[
+            ParsedTransaction(
+                txn_date=date(2026, 4, 1),
+                description="UPI WATER",
+                amount=Decimal("-160.00"),
+                balance=Decimal("99840.00"),
+            )
+        ],
+        bank_slug="yes",
+        account_name="YES BANK Current Account",
+        source_hint="XXXX9405",
+        statement_kind="current",
+        instrument_confidence="high",
+        parser_name="yes_deposit_table",
+        parser_version="1",
+        period_start=date(2026, 4, 1),
+        period_end=date(2026, 4, 1),
+    )
+
+    _stage_parsed(context["db"], context["statement"], parsed, context["owner"].id)
+    context["db"].commit()
+
+    response = context["client"].get(f"/imports/{context['statement'].id}")
+
+    assert response.status_code == 200
+    assert response.json()["statement_kind"] == "current"
+    assert response.json()["instrument_confidence"] == "high"
+    assert response.json()["parser_name"] == "yes_deposit_table"
+    assert response.json()["parser_version"] == "1"
+
+
+def test_confident_statement_cannot_post_to_wrong_account_type(api_context):
+    context = api_context
+    context["statement"].bank_slug = context["owner_account"].bank_slug
+    context["statement"].statement_kind = "credit_card"
+    context["statement"].instrument_confidence = "high"
+    context["db"].commit()
+
+    response = context["client"].post(
+        f"/imports/{context['statement'].id}/confirm",
+        json={"account_id": context["owner_account"].id},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "The selected account type does not match this statement"
+    context["db"].refresh(context["statement"])
+    assert context["statement"].status == ImportStatus.READY
+
+
+def test_user_can_confirm_uncertain_statement_type_when_creating_account(api_context):
+    context = api_context
+    context["statement"].bank_slug = "yes"
+    context["statement"].statement_kind = "bank"
+    context["statement"].instrument_confidence = "unknown"
+    context["statement"].detected_account_name = "YES BANK Account"
+    context["db"].commit()
+
+    response = context["client"].post(
+        f"/imports/{context['statement'].id}/confirm",
+        json={"account_name": "YES current", "statement_kind": "current"},
+    )
+
+    assert response.status_code == 200
+    account = context["db"].get(Account, response.json()["account_id"])
+    assert account is not None
+    assert account.kind == "current"
 
 
 def test_account_correction_is_owned(api_context):

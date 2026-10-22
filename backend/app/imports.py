@@ -54,6 +54,9 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
     statement.detected_account_name = parsed.account_name
     statement.account_hint = parsed.source_hint
     statement.statement_kind = parsed.statement_kind
+    statement.instrument_confidence = parsed.instrument_confidence
+    statement.parser_name = parsed.parser_name
+    statement.parser_version = parsed.parser_version
     statement.period_start = parsed.period_start
     statement.period_end = parsed.period_end
     statement.opening_balance = parsed.opening_balance
@@ -339,6 +342,18 @@ def confirm_import(
         )
         if not account:
             raise HTTPException(status_code=404, detail="Account not found")
+        if statement.bank_slug != "unknown" and account.bank_slug != statement.bank_slug:
+            raise HTTPException(
+                status_code=422,
+                detail="The selected account belongs to a different bank",
+            )
+        if statement.instrument_confidence == "high" and account.kind != statement.statement_kind:
+            raise HTTPException(
+                status_code=422,
+                detail="The selected account type does not match this statement",
+            )
+        if statement.instrument_confidence != "high":
+            statement.statement_kind = account.kind
     elif statement.account_id:
         account = db.scalar(
             select(Account).where(Account.id == statement.account_id, Account.user_id == user.id)
@@ -356,6 +371,8 @@ def confirm_import(
             .order_by(Account.id)
         )
     if account is None:
+        if payload.statement_kind:
+            statement.statement_kind = payload.statement_kind
         bank_slug = statement.bank_slug
         if bank_slug == "unknown":
             bank_slug = payload.bank_slug or ""

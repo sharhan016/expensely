@@ -134,6 +134,9 @@ class StatementImportResponse(ORMModel):
     detected_account_name: str
     account_hint: str
     statement_kind: str
+    instrument_confidence: str
+    parser_name: str
+    parser_version: str
     period_start: date | None
     period_end: date | None
     opening_balance: Decimal | None
@@ -163,6 +166,9 @@ class ImportBulkUpdate(BaseModel):
 class ImportConfirmRequest(BaseModel):
     account_id: int | None = None
     account_name: str | None = Field(default=None, max_length=120)
+    statement_kind: str | None = Field(
+        default=None, pattern=r"^(bank|current|savings|credit_card)$"
+    )
     bank_slug: str | None = Field(
         default=None, min_length=2, max_length=40, pattern=r"^[a-z0-9_-]+$"
     )
