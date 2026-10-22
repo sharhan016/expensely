@@ -85,6 +85,11 @@ Date Transaction Details Merchant Category Amount (Rs.)
         Decimal("-1000.00"),
         Decimal("19380.72"),
     ]
+    assert [row.category for row in parsed.transactions] == ["purchase", "card_payment"]
+    assert parsed.transactions[1].classification_evidence == {
+        "source": "yes_card_description",
+        "signal": "card_payment",
+    }
 
 
 @pytest.mark.parametrize(

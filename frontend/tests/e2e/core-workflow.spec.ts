@@ -193,6 +193,8 @@ test("links a bank debit to its credit-card payment without double counting", as
         "Statement Period: 01/04/2026 To 30/04/2026\n" +
         "Statement Details\n" +
         "Date Transaction Details Merchant Category Amount (Rs.)\n" +
+        "01/04/2026 AMAZON MARKETPLACE Shopping 750.00 Dr\n" +
+        "03/04/2026 AMAZON REFUND Shopping 750.00 Cr\n" +
         "05/04/2026 PAYMENT RECEIVED - Ref No: PAY500 Payments 500.00 Cr\n",
     ),
   });
@@ -200,6 +202,7 @@ test("links a bank debit to its credit-card payment without double counting", as
   await expect(page.getByText("Credit card detected")).toBeVisible();
   await page.getByRole("button", { name: /Confirm to ledger/ }).click();
   await expect(page.getByText(/1 card payment linked/)).toBeVisible();
+  await expect(page.getByText(/1 refund linked to card purchases/)).toBeVisible();
 
   await page.getByRole("link", { name: "Flows" }).click();
   await expect(page.getByRole("heading", { name: "Card payments" })).toBeVisible();
@@ -208,6 +211,9 @@ test("links a bank debit to its credit-card payment without double counting", as
     .filter({ hasText: "YES BANK Current Account" });
   await expect(cardPayment).toContainText("YES BANK Uni RuPay Credit Card");
   await expect(cardPayment).toContainText("₹500");
+  await expect(page.getByRole("heading", { name: "Card refunds & reversals" })).toBeVisible();
+  const refundLink = page.getByRole("article").filter({ hasText: "refund" });
+  await expect(refundLink).toContainText("₹750");
   if (process.env.CAPTURE_FLOW_UI === "1") {
     await page.screenshot({ path: "/private/tmp/card-link-desktop.png", fullPage: true });
     await page.setViewportSize({ width: 360, height: 800 });

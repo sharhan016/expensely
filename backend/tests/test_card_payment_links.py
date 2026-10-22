@@ -17,7 +17,7 @@ from app.models import (
     User,
 )
 from app.security import create_session
-from app.transfer_matching import match_card_payments
+from app.transfer_matching import match_card_payments, match_card_refunds
 
 
 def _movement(
@@ -190,4 +190,127 @@ def test_ambiguous_equal_card_payments_are_not_linked():
         db.commit()
 
         assert match_card_payments(db, user.id) == []
+        assert db.scalar(select(TransactionLink.id)) is None
+
+
+def test_unique_card_refund_is_linked_to_purchase_and_reversible():
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    db = Session(engine, expire_on_commit=False)
+    owner = User(email="refund@example.test", password_hash="unused", display_name="Owner")
+    stranger = User(email="refund-other@example.test", password_hash="unused", display_name="Other")
+    db.add_all([owner, stranger])
+    db.flush()
+    card = Account(
+        user_id=owner.id,
+        name="YES card",
+        bank_slug="yes",
+        account_hint="XXXX9405",
+        kind="credit_card",
+    )
+    db.add(card)
+    db.flush()
+    purchase = _movement(
+        user_id=owner.id,
+        account_id=card.id,
+        txn_date=date(2026, 4, 2),
+        description="AMAZON MARKETPLACE",
+        amount="-750.00",
+        fingerprint="amazon-purchase",
+    )
+    refund = _movement(
+        user_id=owner.id,
+        account_id=card.id,
+        txn_date=date(2026, 4, 8),
+        description="AMAZON REFUND",
+        amount="750.00",
+        fingerprint="amazon-refund",
+    )
+    db.add_all([purchase, refund])
+    db.commit()
+
+    links = match_card_refunds(db, owner.id)
+    db.commit()
+
+    assert len(links) == 1
+    assert links[0].link_type == "refund"
+    assert links[0].outflow_transaction_id == purchase.id
+    assert links[0].inflow_transaction_id == refund.id
+    assert refund.meaning.purpose == Purpose.REFUND
+    assert purchase.meaning.purpose == Purpose.OTHER
+
+    def override_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        with TestClient(app) as client:
+            client.cookies.set("expense_session", create_session(owner.id))
+            listed = client.get("/transaction-links/refunds")
+            assert listed.status_code == 200
+            assert listed.json()[0]["amount"] == "750.00"
+            assert listed.json()[0]["card_account_name"] == "YES card"
+
+            rejected = client.patch(
+                f"/transaction-links/refunds/{links[0].id}", json={"status": "rejected"}
+            )
+            assert rejected.status_code == 200
+            db.refresh(refund.meaning)
+            assert refund.meaning.purpose == Purpose.OTHER
+
+            client.cookies.set("expense_session", create_session(stranger.id))
+            assert client.get("/transaction-links/refunds").json() == []
+    finally:
+        app.dependency_overrides.clear()
+        db.close()
+
+
+def test_equal_refund_candidates_without_unique_purchase_are_not_linked():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        user = User(
+            email="refund-ambiguous@example.test", password_hash="unused", display_name="Owner"
+        )
+        db.add(user)
+        db.flush()
+        card = Account(
+            user_id=user.id,
+            name="Card",
+            bank_slug="yes",
+            account_hint="9405",
+            kind="credit_card",
+        )
+        db.add(card)
+        db.flush()
+        db.add_all(
+            [
+                _movement(
+                    user_id=user.id,
+                    account_id=card.id,
+                    txn_date=date(2026, 4, day),
+                    description=f"AMAZON ORDER {day}",
+                    amount="-500.00",
+                    fingerprint=f"amazon-{day}",
+                )
+                for day in (2, 3)
+            ]
+            + [
+                _movement(
+                    user_id=user.id,
+                    account_id=card.id,
+                    txn_date=date(2026, 4, 8),
+                    description="AMAZON REFUND",
+                    amount="500.00",
+                    fingerprint="ambiguous-refund",
+                )
+            ]
+        )
+        db.commit()
+
+        assert match_card_refunds(db, user.id) == []
         assert db.scalar(select(TransactionLink.id)) is None
