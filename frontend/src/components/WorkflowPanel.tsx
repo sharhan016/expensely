@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
 type RunEvent = { seq: number; stage: string; message: string; status: string };
-type Run = { id: string; status: string; waiting_for: { type: string; import_id?: string; account_id?: number; gap_start?: string; gap_end?: string } | null; question: string | null; events: RunEvent[] };
+type Run = { id: string; updated_at?: string | null; status: string; waiting_for: { type: string; import_id?: string; account_id?: number; gap_start?: string; gap_end?: string } | null; question: string | null; events: RunEvent[] };
 type State = { latest_run: Run | null; review_period: { period_start: string; period_end: string } | null; greeting: string; run: Run | null };
 
 async function fetchState(): Promise<State> {
@@ -18,16 +18,21 @@ async function fetchState(): Promise<State> {
 
 // Shows what the assistant is doing and the one question it is waiting on. All wording and every
 // decision comes from the backend; this component only collects the answer.
-export function WorkflowPanel({ refreshKey }: { refreshKey: number }) {
+export function WorkflowPanel({ refreshKey, onDone }: { refreshKey: number; onDone?: () => void }) {
   const [state, setState] = useState<State | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [fresh, setFresh] = useState(false);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [password, setPassword] = useState("");
 
-  const show = useCallback((current: State) => { setState(current); setRun(current.run); }, []);
+  const show = useCallback((current: State) => {
+    setState(current); setRun(current.run);
+    const shown = current.run ?? current.latest_run;
+    setFresh(Boolean(current.run) || (shown?.updated_at ? Date.now() - new Date(shown.updated_at).getTime() < 10 * 60 * 1000 : false));
+  }, []);
   useEffect(() => {
     fetchState().then(show).catch(reason => setError(reason instanceof Error ? reason.message : "The assistant could not load"));
   }, [show, refreshKey]);
@@ -40,7 +45,7 @@ export function WorkflowPanel({ refreshKey }: { refreshKey: number }) {
       const next = await api<Run>(`/workflow/runs/${run.id}/${path}`, { method: "POST", body: JSON.stringify(body) });
       setRun(next);
       setPassword("");
-      if (next.status !== "waiting") show(await fetchState());
+      if (next.status !== "waiting") { show(await fetchState()); onDone?.(); }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "That answer could not be saved");
     } finally {
@@ -84,9 +89,12 @@ export function WorkflowPanel({ refreshKey }: { refreshKey: number }) {
       )}
       {error && <p className="records-error" role="alert">{error}</p>}
       {shown && shown.events.length > 0 && (
-        <ol className="workflow-events" aria-label="Progress">
-          {shown.events.map(item => <li key={item.seq} className={item.status}>{item.message}</li>)}
-        </ol>
+        <details className="workflow-history" open={fresh}>
+          <summary>What I did ({shown.events.length} steps)</summary>
+          <ol className="workflow-events" aria-label="Progress">
+            {shown.events.map(item => <li key={item.seq} className={item.status}>{item.message}</li>)}
+          </ol>
+        </details>
       )}
     </section>
   );

@@ -322,7 +322,7 @@ def summarize(start, end, count, people, incoming, coverage, buckets) -> str:
             text += (
                 f" Not yet explained: {unexplained['count']} movement"
                 f"{'s' if unexplained['count'] != 1 else ''} "
-                f"(₹{money(unexplained['out'])} out, ₹{money(unexplained['in'])} in)."
+                f"({_rupees(unexplained['out'])} out, {_rupees(unexplained['in'])} in)."
             )
         motion = buckets["in_motion"]
         if motion["count"]:
@@ -337,7 +337,7 @@ def summarize(start, end, count, people, incoming, coverage, buckets) -> str:
             text += f" Returned to you: {_rupees(returns['in'])} (not counted as income)."
         spending = buckets["spending"]
         if spending["count"]:
-            text += f" Marked as spending: ₹{money(spending['out'])}."
+            text += f" Marked as spending: {_rupees(spending['out'])}."
     if coverage["status"] == "partial":
         text += " Only part of this period is covered by checked statements."
     elif coverage["status"] == "none":

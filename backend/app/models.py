@@ -140,7 +140,9 @@ class StatementImport(TimestampMixin, Base):
     reconciliation_difference: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     overlap_warning: Mapped[bool] = mapped_column(Boolean, default=False)
     error_message: Mapped[str] = mapped_column(Text, default="")
-    rows: Mapped[list[ImportRow]] = relationship(cascade="all, delete-orphan")
+    rows: Mapped[list[ImportRow]] = relationship(
+        cascade="all, delete-orphan", order_by="ImportRow.id"
+    )
 
 
 class ImportRow(Base):

@@ -460,6 +460,7 @@ def run_view(db: Session, run: WorkflowRun) -> dict:
         "kind": run.kind,
         "status": run.status,
         "current_stage": run.current_stage,
+        "updated_at": run.updated_at.isoformat() if run.updated_at else None,
         "waiting_for": run.waiting_for,
         "question": question_text(db, run),
         "events": [

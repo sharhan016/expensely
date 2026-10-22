@@ -240,16 +240,18 @@ def investigate(db: Session, user_id: int, message: str, *, today: date | None =
             answer.add("error", _error_text("balance_discontinuities"))
         gaps = _run("coverage_gaps", db, user_id, win, failures)
         seen: set[tuple[str, str]] = set()
+        several = (gaps or {"accounts": 0})["accounts"] > 1
         for item in (gaps or {"gaps": []})["gaps"]:
-            key = (item["start"], item["end"])
+            key = (item["start"], item["end"], item["account_id"] if several else 0)
             if key in seen or len(seen) >= 3:
                 continue
             seen.add(key)
             gap_claims = True
             span = _span(date.fromisoformat(item["start"]), date.fromisoformat(item["end"]))
+            lead = f"{item['account_name']}: nothing covers" if several else "Nothing covers"
             answer.add(
                 "gap",
-                f"Nothing covers {span}, so I cannot see what happened on those dates.",
+                f"{lead} {span}, so I cannot see what happened on those dates.",
                 [(item["evidence"], f"No checked statement for {span}")],
             )
         if "coverage_gaps" in failures:

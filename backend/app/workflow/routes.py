@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.assistant_routes import post_import_summary
 from app.coverage import date_label
 from app.coverage_service import coverage_report
 from app.database import get_db
@@ -105,6 +106,12 @@ def _greeting(db: Session, user_id: int, period: ReviewPeriod | None) -> str:
             "statements cover."
         )
     report = coverage_report(db, user_id)
+    if not report["accounts"]:
+        return (
+            f"You are looking at {date_label(period.period_start)} to "
+            f"{date_label(period.period_end)}. Send me the statements that cover it. I can only "
+            "tell you about dates they cover."
+        )
     through = report["overall"]["reconciled_through"]
     text = (
         f"Welcome back. You are looking at {date_label(period.period_start)} to "
@@ -251,4 +258,6 @@ def password_for_run(
     except ParseError as exc:
         raise HTTPException(status_code=422, detail="The password did not unlock this PDF") from exc
     service.resume_run(db, run, {"answered": "password"})
+    if run.status == "completed" and run.import_ids:
+        post_import_summary(db, user.id, run)
     return service.run_view(db, run)

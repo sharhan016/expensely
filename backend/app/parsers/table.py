@@ -16,6 +16,14 @@ def _column(headers: list[str], *names: str) -> int | None:
     return None
 
 
+def _typed_amount(row: list[str], amount_col: int, type_col: int):
+    amount = abs(parse_amount(row[amount_col]))
+    marker = row[type_col].strip().upper() if type_col < len(row) else ""
+    if marker not in {"DR", "CR"}:
+        raise ValueError("no clear direction")
+    return -amount if marker == "DR" else amount
+
+
 def parse_table(rows: list[list[str]], bank_slug: str) -> ParsedStatement:
     header_index = next(
         (i for i, row in enumerate(rows) if any("date" in cell.lower() for cell in row)), None
@@ -30,6 +38,15 @@ def parse_table(rows: list[list[str]], bank_slug: str) -> ParsedStatement:
     amount_col = _column(headers, "amount")
     balance_col = _column(headers, "closing balance", "balance")
     reference_col = _column(headers, "reference", "chq", "utr")
+    # A single Amount column needs a DR/CR marker column to know the direction.
+    type_col = next(
+        (
+            i
+            for i, header in enumerate(headers)
+            if re.sub(r"[^a-z]", "", header.lower()) in {"type", "drcr", "crdr"}
+        ),
+        None,
+    )
     if date_col is None or description_col is None or (amount_col is None and debit_col is None):
         raise ParseError(
             "The statement layout is not supported yet. Exporting CSV may work better."
@@ -41,14 +58,22 @@ def parse_table(rows: list[list[str]], bank_slug: str) -> ParsedStatement:
         try:
             txn_date = parse_date(row[date_col])
             amount = (
-                parse_amount(row[amount_col])
+                _typed_amount(row, amount_col, type_col)
+                if amount_col is not None and debit_col is None and type_col is not None
+                else parse_amount(row[amount_col])
                 if amount_col is not None
                 else parse_signed_amount(
                     row[debit_col] if debit_col is not None and debit_col < len(row) else "",
                     row[credit_col] if credit_col is not None and credit_col < len(row) else "",
                 )
             )
-        except (ValueError, IndexError):
+        except IndexError:
+            continue
+        except ValueError as exc:
+            if "direction" in str(exc):
+                raise ParseError(
+                    "A row had no clear debit or credit marker, so nothing was imported."
+                ) from exc
             continue
         balance = None
         if balance_col is not None and balance_col < len(row) and row[balance_col].strip():

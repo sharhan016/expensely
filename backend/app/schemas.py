@@ -48,6 +48,7 @@ class AccountResponse(ORMModel):
     statement_end: date | None = None
     age_days: int | None = None
     is_stale: bool = True
+    freshness: str = "unknown"
 
 
 class AccountUpdate(BaseModel):

@@ -304,7 +304,9 @@ def coverage_gaps(db: Session, user_id: int, data: CoverageGapsIn) -> dict:
             cursor = max(cursor, covered_end + timedelta(days=1))
         if cursor <= data.date_to:
             gaps.append(_gap(account.id, cursor, data.date_to))
-    return {"gaps": gaps}
+    for gap in gaps:
+        gap["account_name"] = next(a.name for a in accounts if a.id == gap["account_id"])
+    return {"gaps": gaps, "accounts": len(accounts)}
 
 
 def _gap(account_id: int, start: date, end: date) -> dict:

@@ -3,12 +3,15 @@ import { asOfLabel,dateLabel,showingLabel } from "./ledger";
 
 describe("asOfLabel",()=>{
   it("names the statement date for a current balance",()=>{
-    expect(asOfLabel({as_of:"2026-01-31",is_stale:false,age_days:10})).toBe("As of 31 Jan 2026, from the statement ending that day");
+    expect(asOfLabel({as_of:"2026-01-31",is_stale:false,age_days:10,freshness:"recent"})).toBe("As of 31 Jan 2026, from the statement ending that day (10 days ago)");
+    expect(asOfLabel({as_of:"2026-01-31",is_stale:false,age_days:2,freshness:"current"})).toContain("Up to date.");
   });
   it("says an old balance is not today's balance",()=>{
-    const label=asOfLabel({as_of:"2026-01-31",is_stale:true,age_days:120});
+    const label=asOfLabel({as_of:"2026-01-31",is_stale:true,age_days:120,freshness:"old"});
     expect(label).toContain("120 days ago");
+    expect(label).toContain("months old");
     expect(label).toContain("not today's balance");
+    expect(asOfLabel({as_of:"2026-01-31",is_stale:true,age_days:60,freshness:"stale"})).toContain("more than a month old");
   });
   it("does not imply currency when there is no statement date",()=>{
     expect(asOfLabel({as_of:null,is_stale:true,age_days:null})).toContain("may not be current");

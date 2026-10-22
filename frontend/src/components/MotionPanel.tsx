@@ -20,6 +20,7 @@ export function MotionPanel({ refreshKey }: { refreshKey: number }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [remember, setRemember] = useState<Set<number>>(new Set());
+  const [skipped, setSkipped] = useState<number[]>([]);
 
   useEffect(() => { api<Motion>("/motion").then(setState).catch(() => undefined); }, [refreshKey]);
   const post = useCallback(async (path: string, body?: object, method = "POST") => {
@@ -32,7 +33,8 @@ export function MotionPanel({ refreshKey }: { refreshKey: number }) {
   const hide = (key: string) => setLater(current => new Set(current).add(key));
 
   if (!state) return null;
-  const questions = state.questions.filter(item => !later.has(`q${item.counterparty_id}`));
+  const queue = state.questions.filter(item => !later.has(`q${item.counterparty_id}`)).sort((a, b) => skipped.indexOf(a.counterparty_id) - skipped.indexOf(b.counterparty_id));
+  const questions = queue.slice(0, 1); // one person at a time, biggest first
   const proposals = state.return_proposals.filter(item => !later.has(`r${item.transaction_id}`));
   const loans = state.loan_proposals.filter(item => !later.has(`l${item.person_id}`));
   const transfers = state.transfer_proposals.filter(item => !later.has(`t${item.outflow_id}`));
@@ -43,11 +45,12 @@ export function MotionPanel({ refreshKey }: { refreshKey: number }) {
       {questions.map(item => (
         <div className="workflow-question" role="group" aria-label={`Question about ${item.counterparty_name}`} key={item.counterparty_id}>
           <strong>{item.remembered === "expected_back" ? `You usually expect money from ${item.counterparty_name} back. Track ` : "You sent "}{item.count} payment{item.count === 1 ? "" : "s"} totalling {inr(item.total)}{item.remembered === "expected_back" ? " as expected back?" : ` to ${item.counterparty_name} (${dateLabel(item.first_date)}${item.first_date === item.last_date ? "" : ` to ${dateLabel(item.last_date)}`}). Do you expect it back?`}</strong>
+          {queue.length > 1 && <small>Question 1 of {queue.length}, largest payments first. {queue.length - 1} more after this one.</small>}
           <label className="motion-remember"><input type="checkbox" checked={remember.has(item.counterparty_id)} onChange={() => toggleRemember(item.counterparty_id)} /> Remember my answer for this person</label>
           <div className="workflow-actions">
             <button className="primary" disabled={busy} onClick={() => post("/motion/answers", { counterparty_id: item.counterparty_id, answer: "expected_back", remember: remember.has(item.counterparty_id) })}>{item.remembered === "expected_back" ? "Yes, track them" : "I expect it back"}</button>
             <button className="secondary" disabled={busy} onClick={() => post("/motion/answers", { counterparty_id: item.counterparty_id, answer: "expense", remember: remember.has(item.counterparty_id) })}>It was an expense</button>
-            <button className="text-button" onClick={() => hide(`q${item.counterparty_id}`)}>Ask me later</button>
+            <button className="text-button" onClick={() => (queue.length > 1 ? setSkipped(current => [...current.filter(id => id !== item.counterparty_id), item.counterparty_id]) : hide(`q${item.counterparty_id}`))}>Ask me later</button>
           </div>
         </div>
       ))}

@@ -132,7 +132,7 @@ export default function AssistantPage() {
         </header>
 
         <div ref={feed} className="assistant-feed" aria-live="polite" aria-busy={loading || busy}>
-          <WorkflowPanel refreshKey={panelKey} />
+          <WorkflowPanel refreshKey={panelKey} onDone={() => { fetch("/api/assistant/messages").then(r => (r.ok ? r.json() : null)).then(items => { if (items) setMessages(items); }).catch(() => undefined); setPanelKey(key => key + 1); }} />
           <MotionPanel refreshKey={panelKey} />
           {loading && <p className="assistant-status">Opening your private conversation…</p>}
           {!loading && messages.length === 0 && (

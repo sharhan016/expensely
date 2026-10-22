@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.bank_semantics import bank_line_hint
 from app.cash import sync_cash_markers
 from app.config import settings
 from app.counterparty_service import extract_counterparty
@@ -289,6 +290,18 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
             if transaction.category != "uncategorized"
             else "unresolved"
         )
+        hint = (
+            bank_line_hint(transaction.description, transaction.amount)
+            if parsed.statement_kind != "credit_card"
+            and selected_purpose == Purpose.OTHER
+            and transaction.category == "uncategorized"
+            else None
+        )
+        if hint:
+            selected_purpose = hint.purpose
+            classification_confidence = "suggested"
+            decision_source = "built_in_mapping"
+            purpose_source = {"source": "built_in_mapping", "rule": hint.rule}
         statement.rows.append(
             ImportRow(
                 txn_date=transaction.txn_date,
@@ -319,8 +332,8 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
                     else "unresolved"
                 ),
                 confidence=classification_confidence,
-                category=transaction.category,
-                category_confidence=transaction.category_confidence,
+                category=hint.category if hint else transaction.category,
+                category_confidence=("suggested" if hint else transaction.category_confidence),
                 classification_evidence={
                     "category": transaction.classification_evidence or {},
                     "purpose": purpose_source,

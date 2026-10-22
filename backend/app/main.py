@@ -198,6 +198,7 @@ def _account_response(account: Account, db: Session, user_id: int) -> AccountRes
             "statement_end": balance.statement_end,
             "age_days": balance.age_days,
             "is_stale": balance.is_stale,
+            "freshness": balance.freshness,
         }
     )
 

@@ -10,6 +10,19 @@ from app.models import Account, ImportStatus, StatementImport, Transaction
 
 # Statements arrive about monthly; a balance older than this is reported as stale, never as current.
 STALE_AFTER_DAYS = 35
+CURRENT_WITHIN_DAYS = 7
+OLD_AFTER_DAYS = 90
+
+
+def freshness(age_days: int | None) -> str:
+    """current (days), recent (weeks), stale (over a month) or old (months)."""
+    if age_days is None:
+        return "unknown"
+    if age_days <= CURRENT_WITHIN_DAYS:
+        return "current"
+    if age_days <= STALE_AFTER_DAYS:
+        return "recent"
+    return "stale" if age_days <= OLD_AFTER_DAYS else "old"
 
 
 @dataclass(frozen=True)
@@ -23,6 +36,7 @@ class AccountBalance:
     statement_end: date | None
     age_days: int | None
     is_stale: bool
+    freshness: str
 
 
 def account_balances(
@@ -62,6 +76,7 @@ def account_balances(
                 statement_end=statement_end,
                 age_days=age_days,
                 is_stale=age_days is None or age_days > STALE_AFTER_DAYS,
+                freshness=freshness(age_days),
             )
         )
     return balances
@@ -76,6 +91,7 @@ def overall_context(balances: list[AccountBalance]) -> dict:
         "as_of": as_of.isoformat() if as_of else None,
         "age_days": max(ages) if ages else None,
         "is_stale": any(item.is_stale for item in balances),
+        "freshness": freshness(max(ages)) if ages else "unknown",
         "accounts_without_statement": sum(item.as_of is None for item in balances),
     }
 
@@ -94,6 +110,7 @@ def balance_to_json(item: AccountBalance) -> dict:
         "statement_end": item.statement_end.isoformat() if item.statement_end else None,
         "age_days": item.age_days,
         "is_stale": item.is_stale,
+        "freshness": item.freshness,
     }
 
 

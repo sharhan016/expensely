@@ -1,4 +1,5 @@
 import re
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -69,7 +70,7 @@ def _import_reply(statements: list[StatementImport]) -> tuple[str, dict]:
             "bank": "bank statement",
         }.get(statement.statement_kind, "statement")
         period = (
-            f" for {statement.period_start.isoformat()} to {statement.period_end.isoformat()}"
+            f" for {date_label(statement.period_start)} to {date_label(statement.period_end)}"
             if statement.period_start and statement.period_end
             else ""
         )
@@ -182,6 +183,36 @@ def _legacy_note(db: Session, user_id: int) -> str:
     return f" {count} older entries are not used for suggestions until you confirm them."
 
 
+def post_import_summary(db: Session, user_id: int, run) -> None:
+    """Once a protected statement is unlocked, say what was found, once per run."""
+    recent = db.scalars(
+        select(AssistantMessage)
+        .where(AssistantMessage.user_id == user_id, AssistantMessage.role == "assistant")
+        .order_by(AssistantMessage.id.desc())
+        .limit(50)
+    ).all()
+    if any(item.context.get("run_id") == str(run.id) for item in recent):
+        return
+    statements = db.scalars(
+        select(StatementImport).where(
+            StatementImport.user_id == user_id,
+            StatementImport.id.in_([uuid.UUID(item) for item in run.import_ids]),
+        )
+    ).all()
+    if not statements:
+        return
+    reply, context = _import_reply(statements)
+    db.add(
+        AssistantMessage(
+            user_id=user_id,
+            role="assistant",
+            content=reply,
+            context={**context, "run_id": str(run.id)},
+        )
+    )
+    db.commit()
+
+
 def _workspace_reply(db: Session, user_id: int, message: str) -> tuple[str, dict]:
     lowered = message.casefold()
     if any(term in lowered for term in ("reconcil", "covered", "coverage", "gap", "missing")):
@@ -292,20 +323,27 @@ def _workspace_answer(db: Session, user_id: int, message: str) -> tuple[str, dic
         bank_ids = {account.id for account in accounts if account.instrument_type != "credit_card"}
         balances = [item for item in account_balances(db, user_id) if item.account_id in bank_ids]
         bank_balance = sum((item.balance for item in balances), Decimal("0"))
-        context = overall_context(balances)
-        as_of = _date_label(context["as_of"])
+        parts = []
+        for item in balances:
+            part = f"{item.name} {_money(item.balance)}"
+            if item.as_of:
+                part += f" as of {_date_label(item.as_of.isoformat())} ({item.age_days} days ago)"
+            parts.append(part)
+        different = len({item.as_of for item in balances if item.as_of}) > 1
         freshness = (
-            f" as of {as_of}, from the statement{'s' if len(balances) != 1 else ''} ending then"
-            if as_of
-            else " (no confirmed statement date, so I cannot say how current this is)"
+            "Your bank balances: "
+            + "; ".join(parts)
+            + f". Together that is {_money(bank_balance)}"
+            + (", but they are from different dates" if different else "")
+            + (
+                ". Some of this is old, so it may not match your bank today"
+                if any(item.is_stale for item in balances)
+                else ""
+            )
         )
-        if context["is_stale"] and as_of:
-            freshness += "; it may be out of date"
         unresolved = sum(transaction.purpose == Purpose.OTHER for transaction in transactions)
         return (
-            f"Your bank-ledger balance is {_money(bank_balance)}{freshness}, across "
-            f"{len(bank_ids)} account"
-            f"{'s' if len(bank_ids) != 1 else ''}. {unresolved} movement"
+            f"{freshness}. {unresolved} movement"
             f"{'s' if unresolved != 1 else ''} still need review.",
             {"kind": "workspace_summary", "unresolved_count": unresolved},
         )

@@ -66,7 +66,7 @@ export default function Records() {
           <section className="records-overall" aria-label="Overall status">
             <p className="kicker">Overall</p>
             <h2 data-testid="overall-summary">{report.overall.summary}</h2>
-            {report.overall.banner !== report.overall.summary && <p>{report.overall.banner}</p>}
+            {report.overall.banner.replace(report.overall.summary, "").trim() && <p>{report.overall.banner.replace(report.overall.summary, "").trim()}</p>}
           </section>
           <div className="records-grid">
             {report.accounts.map(account => (

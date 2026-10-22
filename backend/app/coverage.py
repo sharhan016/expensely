@@ -229,7 +229,7 @@ def describe_account(name: str, coverage: AccountCoverage, *, today: date) -> st
 
 def describe_overall(overall: OverallCoverage, *, today: date) -> str:
     if not overall.in_scope_count:
-        return "No accounts are in scope, so there is nothing to reconcile."
+        return "I do not have any statements yet."
     if overall.reconciled_through is None:
         return (
             f"Nothing is reconciled yet; {overall.lagging_name} has no checked statements."
@@ -237,7 +237,9 @@ def describe_overall(overall: OverallCoverage, *, today: date) -> str:
             else "Nothing is reconciled yet."
         )
     age = (today - overall.reconciled_through).days
-    text = f"Everything in scope is reconciled through {date_label(overall.reconciled_through)}"
+    text = (
+        f"Everything I have checked is reconciled through {date_label(overall.reconciled_through)}"
+    )
     text += f" ({age} days ago)."
     if overall.in_scope_count > 1 and overall.lagging_name:
         text += f" {overall.lagging_name} is the furthest behind."
