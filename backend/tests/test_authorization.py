@@ -418,7 +418,7 @@ def test_user_can_confirm_uncertain_statement_type_when_creating_account(api_con
     assert response.status_code == 200
     account = context["db"].get(Account, response.json()["account_id"])
     assert account is not None
-    assert account.kind == "current"
+    assert account.instrument_type == "current"
 
 
 def test_account_correction_is_owned(api_context):

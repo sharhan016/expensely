@@ -63,14 +63,14 @@ def test_unique_card_payment_pair_is_neutral_and_reversible():
         name="YES current",
         bank_slug="yes",
         account_hint="XXXX1122",
-        kind="current",
+        instrument_type="current",
     )
     card = Account(
         user_id=owner.id,
         name="YES card",
         bank_slug="yes",
         account_hint="XXXX9405",
-        kind="credit_card",
+        instrument_type="credit_card",
     )
     db.add_all([bank, card])
     db.flush()
@@ -153,14 +153,14 @@ def test_ambiguous_equal_card_payments_are_not_linked():
             name="Current",
             bank_slug="yes",
             account_hint="1111",
-            kind="current",
+            instrument_type="current",
         )
         card = Account(
             user_id=user.id,
             name="Card",
             bank_slug="yes",
             account_hint="9405",
-            kind="credit_card",
+            instrument_type="credit_card",
         )
         db.add_all([bank, card])
         db.flush()
@@ -210,7 +210,7 @@ def test_unique_card_refund_is_linked_to_purchase_and_reversible():
         name="YES card",
         bank_slug="yes",
         account_hint="XXXX9405",
-        kind="credit_card",
+        instrument_type="credit_card",
     )
     db.add(card)
     db.flush()
@@ -283,7 +283,7 @@ def test_equal_refund_candidates_without_unique_purchase_are_not_linked():
             name="Card",
             bank_slug="yes",
             account_hint="9405",
-            kind="credit_card",
+            instrument_type="credit_card",
         )
         db.add(card)
         db.flush()

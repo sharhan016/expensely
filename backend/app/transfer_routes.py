@@ -114,7 +114,7 @@ def unmatched_card_payments(db: Session = Depends(get_db), user: User = Depends(
         .where(
             Transaction.user_id == user.id,
             Account.user_id == user.id,
-            Account.kind == "credit_card",
+            Account.instrument_type == "credit_card",
             Transaction.amount > 0,
             Transaction.id.not_in(linked_ids),
         )

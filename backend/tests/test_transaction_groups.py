@@ -63,7 +63,7 @@ def test_groups_reference_each_movement_and_split_financial_meaning():
         name="Current",
         bank_slug="yes",
         account_hint="7788",
-        kind="current",
+        instrument_type="current",
     )
     counterparty = Counterparty(user_id=owner.id, display_name="Asha", kind="person")
     person = Person(user_id=owner.id, name="Asha")

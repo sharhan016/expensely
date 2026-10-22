@@ -97,7 +97,7 @@ def match_card_payments(db: Session, user_id: int) -> list[TransactionLink]:
         .where(
             Transaction.user_id == user_id,
             Account.user_id == user_id,
-            Account.kind == "credit_card",
+            Account.instrument_type == "credit_card",
             Transaction.amount > 0,
         )
     ).all()
@@ -108,7 +108,7 @@ def match_card_payments(db: Session, user_id: int) -> list[TransactionLink]:
         .where(
             Transaction.user_id == user_id,
             Account.user_id == user_id,
-            Account.kind != "credit_card",
+            Account.instrument_type != "credit_card",
             Transaction.amount < 0,
         )
     ).all()
@@ -202,7 +202,7 @@ def match_card_refunds(db: Session, user_id: int) -> list[TransactionLink]:
         .where(
             Transaction.user_id == user_id,
             Account.user_id == user_id,
-            Account.kind == "credit_card",
+            Account.instrument_type == "credit_card",
         )
     ).all()
     refunds = [

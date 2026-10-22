@@ -38,8 +38,8 @@ router = APIRouter(tags=["financial workspace"])
 def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
     transactions = db.scalars(select(Transaction).where(Transaction.user_id == user.id)).all()
     accounts = db.scalars(select(Account).where(Account.user_id == user.id)).all()
-    bank_accounts = [account for account in accounts if account.kind != "credit_card"]
-    credit_accounts = [account for account in accounts if account.kind == "credit_card"]
+    bank_accounts = [account for account in accounts if account.instrument_type != "credit_card"]
+    credit_accounts = [account for account in accounts if account.instrument_type == "credit_card"]
     bank_account_ids = {account.id for account in bank_accounts}
     credit_account_ids = {account.id for account in credit_accounts}
     bank = sum((account.opening_balance for account in bank_accounts), Decimal("0")) + sum(

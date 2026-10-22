@@ -50,6 +50,13 @@ class ImportStatus(enum.StrEnum):
     FAILED = "failed"
 
 
+class InstrumentType(enum.StrEnum):
+    BANK = "bank"
+    CURRENT = "current"
+    SAVINGS = "savings"
+    CREDIT_CARD = "credit_card"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
@@ -77,7 +84,15 @@ class Account(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120))
     bank_slug: Mapped[str] = mapped_column(String(40))
     account_hint: Mapped[str] = mapped_column(String(32), default="")
-    kind: Mapped[str] = mapped_column(String(24), default="bank")
+    instrument_type: Mapped[InstrumentType] = mapped_column(
+        "kind",
+        Enum(
+            InstrumentType,
+            name="accountinstrumenttype",
+            values_callable=lambda members: [member.value for member in members],
+        ),
+        default=InstrumentType.BANK,
+    )
     currency: Mapped[str] = mapped_column(String(3), default="INR")
     opening_balance: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=0)
     user: Mapped[User] = relationship(back_populates="accounts")

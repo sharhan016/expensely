@@ -54,7 +54,7 @@ def test_repeated_upi_flow_groups_without_merging_and_learns_future_meaning():
         name="YES current",
         bank_slug="yes",
         account_hint="XXXX9405",
-        kind="current",
+        instrument_type="current",
     )
     batch = ImportBatch(user_id=user.id)
     db.add_all([account, batch])

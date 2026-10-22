@@ -169,7 +169,7 @@ def _workspace_reply(db: Session, user_id: int, message: str) -> tuple[str, dict
             {"kind": "unresolved_summary", "count": unresolved},
         )
     if "card" in lowered:
-        card_ids = {account.id for account in accounts if account.kind == "credit_card"}
+        card_ids = {account.id for account in accounts if account.instrument_type == "credit_card"}
         card_position = sum(
             (account.opening_balance for account in accounts if account.id in card_ids),
             Decimal("0"),
@@ -248,7 +248,7 @@ def _workspace_reply(db: Session, user_id: int, message: str) -> tuple[str, dict
             "count": len(rows),
         }
     if any(term in lowered for term in ("summary", "balance", "overview", "money")):
-        bank_ids = {account.id for account in accounts if account.kind != "credit_card"}
+        bank_ids = {account.id for account in accounts if account.instrument_type != "credit_card"}
         bank_balance = sum(
             (account.opening_balance for account in accounts if account.id in bank_ids),
             Decimal("0"),

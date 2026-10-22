@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, SecretStr
 
-from app.models import ImportStatus, Purpose
+from app.models import ImportStatus, InstrumentType, Purpose
 
 
 class ORMModel(BaseModel):
@@ -38,7 +38,7 @@ class AccountResponse(ORMModel):
     name: str
     bank_slug: str
     account_hint: str
-    kind: str
+    instrument_type: InstrumentType
     currency: str
     opening_balance: Decimal
     current_balance: Decimal = Decimal("0")

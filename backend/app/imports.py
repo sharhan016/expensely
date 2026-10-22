@@ -17,6 +17,7 @@ from app.models import (
     ImportBatch,
     ImportRow,
     ImportStatus,
+    InstrumentType,
     Purpose,
     Reconciliation,
     StatementImport,
@@ -128,7 +129,7 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
             .where(
                 Account.user_id == user_id,
                 Account.bank_slug == parsed.bank_slug,
-                Account.kind == parsed.statement_kind,
+                Account.instrument_type == parsed.statement_kind,
                 Account.account_hint.endswith(last_four),
             )
             .order_by(Account.id)
@@ -509,13 +510,16 @@ def confirm_import(
                 status_code=422,
                 detail="The selected account belongs to a different bank",
             )
-        if statement.instrument_confidence == "high" and account.kind != statement.statement_kind:
+        if (
+            statement.instrument_confidence == "high"
+            and account.instrument_type != statement.statement_kind
+        ):
             raise HTTPException(
                 status_code=422,
                 detail="The selected account type does not match this statement",
             )
         if statement.instrument_confidence != "high":
-            statement.statement_kind = account.kind
+            statement.statement_kind = account.instrument_type
     elif statement.account_id:
         account = db.scalar(
             select(Account).where(Account.id == statement.account_id, Account.user_id == user.id)
@@ -527,7 +531,7 @@ def confirm_import(
             .where(
                 Account.user_id == user.id,
                 Account.bank_slug == statement.bank_slug,
-                Account.kind == statement.statement_kind,
+                Account.instrument_type == statement.statement_kind,
                 Account.account_hint.endswith(last_four),
             )
             .order_by(Account.id)
@@ -551,7 +555,7 @@ def confirm_import(
             name=account_name,
             bank_slug=bank_slug,
             account_hint=statement.account_hint or uuid.uuid4().hex[:8],
-            kind=statement.statement_kind,
+            instrument_type=InstrumentType(statement.statement_kind),
             opening_balance=statement.opening_balance or 0,
         )
         db.add(account)

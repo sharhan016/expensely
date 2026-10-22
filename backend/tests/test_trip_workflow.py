@@ -117,7 +117,7 @@ def test_dashboard_keeps_credit_card_debt_out_of_bank_balance():
             name="Credit card",
             bank_slug="test-card",
             account_hint="2002",
-            kind="credit_card",
+            instrument_type="credit_card",
             opening_balance=Decimal("0"),
         )
         db.add_all([bank, card])

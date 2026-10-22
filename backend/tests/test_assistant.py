@@ -39,7 +39,7 @@ def test_private_assistant_summarizes_uploads_and_workspace_without_external_ai(
         name="YES current",
         bank_slug="yes",
         account_hint="9405",
-        kind="current",
+        instrument_type="current",
         opening_balance=Decimal("1000.00"),
     )
     batch = ImportBatch(user_id=owner.id)
