@@ -100,6 +100,14 @@ Known limits: only tests using the shared `workspace` fixture run on PostgreSQL 
 - Investigation: new `open_expectations` tool; the planner calls it and `related_links` for exact matches and states how things were recorded (open expectation, written off, confirmed return, pending return, linked movement) with evidence ids and no cause.
 - Known limits: report buckets classify whole movements, so a partly allocated movement lands in one bucket; remembered choices apply per counterparty (not per person record); SQLite unit tests cannot prove the database cap.
 
+## Real-statement testing (2026-10-23, local only; no data here)
+
+Two real PDFs (Federal and PNB) were run through the test account with an independent oracle (each PDF's own balance column) and a redacted browser transcript. See `docs/e2e-real-statements-plan.md`.
+
+- Calculations: every row, running balance, account balance, per-day and per-bucket total, drill-down sum, CSV/TSV total, dashboard figure, coverage date, recency flag, idempotent re-upload and investigation match equals the oracle, on SQLite and PostgreSQL (`backend/tests/test_real_statements_local.py`, skipped when `reference-docs/` is absent).
+- Found and fixed: PNB layout (single Amount plus DR/CR Type) was read as all credits and not recognised (new `pnb` parser; the generic reader now also handles Amount plus Type and refuses rows without a clear marker); UPI handles split by a PDF line wrap were missed; review rows could come back out of order on PostgreSQL; 30 stacked questions (now one at a time, largest first); progress clutter (collapsed once old); the assistant never summarised a statement after it was unlocked; gap answers said "nothing covers" when another account did (now names the account); the balance summary mixed account dates (now per account); money formatting was inconsistent; "in scope" jargon; first greeting said "Welcome back"; bank charges and interest were left unexplained (now only suggested, never confident); freshness is now current / recent / stale / old.
+- Open: counterparty names derived from handles are ugly (the narration's name token would read better); nothing else is auto-classified, so a first import is mostly "needs review"; other banks (HDFC, SBI) still untested on real files.
+
 ## Current outcome
 
 The application now supports a meaningful first vertical slice:

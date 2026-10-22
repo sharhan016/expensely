@@ -24,11 +24,11 @@ export default defineConfig({
   globalSetup: "./tests/e2e/global-setup.ts",
   projects: [
     // Registration and import flows that create their own throwaway users.
-    { name: "chromium", testIgnore: /signed-in\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
+    { name: "chromium", testIgnore: /(signed-in|real-statements)\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
     // Specs that start already signed in as the shared account from the git-ignored .env.e2e.
     {
       name: "signed-in",
-      testMatch: /signed-in\.spec\.ts/,
+      testMatch: /(signed-in|real-statements)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], storageState: "tests/e2e/.auth/user.json" },
     },
   ],
