@@ -12,6 +12,8 @@ from app import coverage_hooks  # noqa: F401  (registers reconciliation invalida
 from app.action_routes import router as action_router
 from app.assistant_routes import router as assistant_router
 from app.balances import account_balances, ledger_running_balances
+from app.cash import neutral_movement_ids
+from app.cash_routes import router as cash_router
 from app.config import settings
 from app.counterparty_routes import router as counterparty_router
 from app.coverage_routes import router as coverage_router
@@ -91,6 +93,7 @@ app.include_router(group_router)
 app.include_router(transfer_router)
 app.include_router(assistant_router)
 app.include_router(coverage_router)
+app.include_router(cash_router)
 app.include_router(action_router)
 
 
@@ -254,9 +257,13 @@ def transactions(
         .offset(offset)
     ).all()
     balances = ledger_running_balances(db, user.id, {row.id for row in rows})
+    cash_ids = neutral_movement_ids(db, user.id)
     items = [
         _transaction_response(transaction).model_copy(
-            update={"running_balance": balances.get(transaction.id)}
+            update={
+                "running_balance": balances.get(transaction.id),
+                "is_cash_withdrawal": transaction.id in cash_ids,
+            }
         )
         for transaction in rows
     ]

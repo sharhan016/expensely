@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.cash import sync_cash_markers
 from app.config import settings
 from app.counterparty_service import extract_counterparty
 from app.coverage_service import record_reconciliation
@@ -800,6 +801,7 @@ def confirm_import(
             statement.opening_balance, period_movements, statement.closing_balance
         )
         record_reconciliation(db, statement, account.id, statement_difference)
+    sync_cash_markers(db, user.id)
     db.commit()
     return ImportConfirmResponse(
         imported=imported,

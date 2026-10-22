@@ -6,6 +6,8 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.balances import account_balances, overall_context
+from app.cash import cash_summary
+from app.coverage_service import coverage_sentence
 from app.database import get_db
 from app.models import (
     Account,
@@ -176,7 +178,20 @@ def _legacy_note(db: Session, user_id: int) -> str:
 
 
 def _workspace_reply(db: Session, user_id: int, message: str) -> tuple[str, dict]:
+    lowered = message.casefold()
+    if any(term in lowered for term in ("reconcil", "covered", "coverage", "gap", "missing")):
+        return coverage_sentence(db, user_id), {"kind": "coverage_summary"}
+    if "cash" in lowered and "card" not in lowered:
+        summary = cash_summary(db, user_id)
+        db.commit()
+        return f"{summary['summary']} {summary['note']}", {"kind": "cash_summary"}
     reply, context = _workspace_answer(db, user_id, message)
+    if context.get("kind") == "workspace_summary":
+        reply += f" {coverage_sentence(db, user_id)}"
+        cash = cash_summary(db, user_id)
+        db.commit()
+        if cash["withdrawal_count"]:
+            reply += f" {cash['summary']}"
     if context.get("kind") in {"workspace_summary", "unresolved_summary", "capabilities"}:
         reply += _legacy_note(db, user_id)
     return reply, context

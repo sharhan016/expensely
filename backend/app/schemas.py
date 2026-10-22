@@ -96,6 +96,7 @@ class TransactionResponse(ORMModel):
     notes: str
     meaning_version: int = 1
     running_balance: Decimal | None = None
+    is_cash_withdrawal: bool = False
     created_at: datetime
 
 
