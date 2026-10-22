@@ -80,7 +80,9 @@ Date Transaction Details Merchant Category Amount (Rs.)
     assert parsed.instrument_confidence == "high"
     assert parsed.parser_name == "yes_credit_card"
     assert parsed.opening_balance == Decimal("-19329.72")
-    assert parsed.closing_balance == Decimal("-10410.16")
+    assert parsed.closing_balance is None
+    assert parsed.statement_balance is None
+    assert parsed.total_amount_due == Decimal("10410.16")
     assert [row.amount for row in parsed.transactions] == [
         Decimal("-1000.00"),
         Decimal("19380.72"),
@@ -90,6 +92,31 @@ Date Transaction Details Merchant Category Amount (Rs.)
         "source": "yes_card_description",
         "signal": "card_payment",
     }
+
+
+def test_card_due_amounts_remain_distinct_from_statement_balance():
+    text = """Credit Card Statement YES BANK
+YES BANK Uni RuPay
+Statement for YES BANK Card Number XXXX XXXX XXXX 9405
+Statement Period: 01/04/2026 To 30/04/2026
+Previous Balance : Rs. 2,000.00 Dr
+Statement Balance: Rs. 1,250.00 Dr
+Total Amount Due: Rs. 1,100.00
+Minimum Amount Due: Rs. 220.00
+Available Credit: Rs. 48,750.00
+Statement Details
+Date Transaction Details Merchant Category Amount (Rs.)
+02/04/2026 LOCAL SHOP Shopping 750.00 Dr
+"""
+
+    parsed = _parse_yes_credit_card(text)
+
+    assert parsed.opening_balance == Decimal("-2000.00")
+    assert parsed.closing_balance == Decimal("-1250.00")
+    assert parsed.statement_balance == Decimal("1250.00")
+    assert parsed.total_amount_due == Decimal("1100.00")
+    assert parsed.minimum_amount_due == Decimal("220.00")
+    assert parsed.available_credit == Decimal("48750.00")
 
 
 @pytest.mark.parametrize(

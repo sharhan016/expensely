@@ -199,6 +199,11 @@ test("links a bank debit to its credit-card payment without double counting", as
         "YES BANK Uni RuPay\n" +
         "Statement for YES BANK Card Number XXXX XXXX XXXX 9405\n" +
         "Statement Period: 01/04/2026 To 30/04/2026\n" +
+        "Previous Balance : Rs. 1,000.00 Dr\n" +
+        "Statement Balance: Rs. 500.00 Dr\n" +
+        "Total Amount Due: Rs. 450.00\n" +
+        "Minimum Amount Due: Rs. 90.00\n" +
+        "Available Credit: Rs. 49,500.00\n" +
         "Statement Details\n" +
         "Date Transaction Details Merchant Category Amount (Rs.)\n" +
         "01/04/2026 AMAZON MARKETPLACE Shopping 750.00 Dr\n" +
@@ -208,6 +213,11 @@ test("links a bank debit to its credit-card payment without double counting", as
   });
   await page.getByRole("button", { name: "Extract transactions" }).click();
   await expect(page.getByText("Credit card detected")).toBeVisible();
+  await expect(page.getByText("Total amount due")).toBeVisible();
+  await expect(page.getByText("₹450.00", { exact: true })).toBeVisible();
+  await expect(page.getByText("Minimum amount due")).toBeVisible();
+  await expect(page.getByText("Available credit")).toBeVisible();
+  await expect(page.getByText("Statement balances reconcile")).toBeVisible();
   await page.getByRole("button", { name: /Confirm to ledger/ }).click();
   await expect(page.getByText(/1 card payment linked/)).toBeVisible();
   await expect(page.getByText(/1 refund linked to card purchases/)).toBeVisible();
