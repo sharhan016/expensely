@@ -434,3 +434,56 @@ test("a PDF that cannot be read is explained on the import page and never blocks
   await page.reload();
   await expect(page.getByText("Drop bank statements here")).toBeVisible();
 });
+
+test("period report totals open to rows, export matches, and uncovered dates are named", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const email = `report-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Create a private workspace" }).click();
+  await page.getByLabel("Your name").fill("Report Test");
+  await page.getByLabel("Email").fill(email);
+  await page.locator('input[name="password"]').fill("local-test-password");
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page).toHaveURL("/");
+
+  await page.goto("/imports");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "yes-report.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      "YES BANK Statement,,,,\nAccount Type: Current,,,,\nAccount Number: 0012XXXX7788,,,,\n" +
+        "Date,Narration,Withdrawal,Deposit,Closing Balance\n" +
+        "05/01/2026,UPI/DR/001/SHOP/YESB/shop@okaxis/SYNTHETIC SHOP,100.00,,900.00\n" +
+        "10/01/2026,ATM WDL SYNTHETIC BRANCH,300.00,,600.00\n",
+    ),
+  });
+  await page.getByRole("button", { name: "Extract transactions" }).click();
+  await expect(page.getByText("Extraction result")).toBeVisible();
+  await page.getByRole("button", { name: /Confirm to ledger/ }).click();
+  await expect(page.getByText(/added to the ledger/)).toBeVisible();
+
+  await page.goto("/report");
+  await page.getByLabel("From", { exact: true }).fill("2026-01-01");
+  await page.getByLabel("To", { exact: true }).fill("2026-01-31");
+  await page.getByRole("button", { name: "Show report" }).click();
+  await expect(page.getByTestId("report-summary")).toContainText("2 movements");
+  await expect(page.getByTestId("report-summary")).not.toContainText(/spent/i);
+  await expect(page.getByText(/not checked 11 Jan 2026 to 31 Jan 2026/)).toBeVisible();
+  await expect(page.getByText(/Withdrawn as cash: ₹300.00/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Withdrawn as cash" }).click();
+  await expect(page.getByTestId("drill-title")).toContainText("Withdrawn as cash");
+  await expect(page.getByRole("table", { name: "Rows" }).getByRole("row")).toHaveCount(2); // header + 1
+  await expect(page.getByRole("table", { name: "Rows" })).toContainText("ATM WDL SYNTHETIC BRANCH");
+
+  await page.getByRole("button", { name: "Copy as table" }).click();
+  await expect(page.getByText(/Copied 2 rows/)).toBeVisible();
+  const pasted = await page.evaluate(() => navigator.clipboard.readText());
+  expect(pasted.split("\n")[0]).toBe("Date\tAccount\tDescription\tAmount\tBucket\tCounterparty");
+  expect(pasted).toContain("2026-01-10\t");
+
+  const download = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download CSV" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("report-2026-01-01-to-2026-01-31.csv");
+});
