@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pdfplumber
+from pdfminer.pdfdocument import PDFPasswordIncorrect
 
 from app.parsers.banks.yes import parse_credit_card
 from app.parsers.errors import ParseError
@@ -52,6 +53,17 @@ def _parse_yes_credit_card(text: str) -> ParsedStatement:
     return parse_credit_card(text)
 
 
+def pdf_open_error(exc: BaseException) -> ParseError:
+    """Ask for a password only when the PDF library says the password is the problem."""
+    causes = [exc, exc.__cause__, exc.__context__, *exc.args]
+    if any(isinstance(cause, PDFPasswordIncorrect) for cause in causes):
+        return ParseError("This PDF is password protected.")
+    return ParseError(
+        "We could not read this PDF. It may be damaged, incomplete or use unsupported "
+        "protection; try downloading it again."
+    )
+
+
 def parse_statement(path: Path, password: str | None = None) -> ParsedStatement:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
@@ -60,10 +72,7 @@ def parse_statement(path: Path, password: str | None = None) -> ParsedStatement:
                 text = "\n".join(page.extract_text() or "" for page in pdf.pages)
                 tables = [table for page in pdf.pages for table in (page.extract_tables() or [])]
         except Exception as exc:
-            message = f"{type(exc).__name__} {exc!s} {type(exc.__context__).__name__}".lower()
-            if "password" in message or "decrypt" in message or "pdfminerexception" in message:
-                raise ParseError("This PDF is password protected.") from exc
-            raise ParseError("The PDF could not be opened.") from exc
+            raise pdf_open_error(exc) from exc
         rows = [row for table in tables for row in table]
         clean_rows = [[cell or "" for cell in row] for row in rows]
         known = parse_known_statement(text, clean_rows)
