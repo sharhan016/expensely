@@ -13,13 +13,12 @@ downgrade` leaves them alone. They contain no financial data, so leaving them is
 
 ## Where `setup()` runs
 
-- Application startup (FastAPI lifespan) when the database is PostgreSQL. It is idempotent.
-- Tests: the workflow service calls it the first time a PostgreSQL session is used.
+- The workflow service calls it the first time a PostgreSQL session is used in a process (cached per URL). It is idempotent.
 - CI: `make verify` migrates, then runs the integration and end-to-end suites; the first workflow
   run calls `setup()`. No extra CI step is needed.
 - SQLite (the default unit-test database) uses an in-memory checkpointer; durable resume is
-  proven on PostgreSQL only (`tests/integration/test_langgraph_spike.py`,
-  `tests/integration/test_workflow_restart.py`).
+  proven on PostgreSQL only (`tests/integration/test_langgraph_spike.py` with separate processes,
+  and the Playwright journey, which restarts the real server through `backend/scripts/e2e_supervisor.py`).
 
 ## Rules for graph code
 

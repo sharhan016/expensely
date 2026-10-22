@@ -3,7 +3,7 @@
 Last updated: 2026-10-22  
 Branch: `agentic-development`  
 Source specification: `expense-analyzer-agent-first-workflow-prompt.md`
-Current plan: `docs/alignment-and-plan.md` (Increments 1a and 1b done; Increment 2 awaits approval)
+Current plan: `docs/alignment-and-plan.md` (Increments 1a, 1b and 2 done; Increment 3 awaits approval)
 
 ## How to use this file
 
@@ -51,6 +51,16 @@ Known limits: only tests using the shared `workspace` fixture run on PostgreSQL 
 - `frontend/tests/e2e/pdf-fixtures.ts` renders synthetic statements to PDF with Chromium and builds expected rows in integer paise. `signed-in.spec.ts` uploads one through the assistant and checks that the assistant's totals, the review table (row by row), the ledger and exact running balances all match what the PDF says, including two identical same-day rows.
 - The shared account keeps data between local runs; run `make test-db-reset` for a clean slate. Failure artifacts under `frontend/test-results` can contain the test password; they are git-ignored.
 - Fixed while building this: a failed PDF read showed an empty "Extraction result" with a Confirm button and no reason, and failed imports stayed pending forever, hiding the upload zone.
+
+## Increment 2: first visit and coming back (done 2026-10-22)
+
+- Period mismatch state: a statement that adds up on its own rows is not counted when the movements recorded for the same dates do not add up with its balances (`reconciliations.period_difference`; older rows read as unverified until re-checked).
+- LangGraph adopted after a spike met its criteria (`tests/integration/test_langgraph_spike.py`, `docs/workflow-checkpoints.md`). Our `workflow_runs` / `workflow_events` are the source of truth; checkpoints hold ids, dates and codes only. Passwords never go through `interrupt()` or resume values: the unlock request parses with the password and the graph is resumed with a code.
+- Review period is a standing preference (`/review-period`). Acknowledged gaps (`acknowledged_gaps`) show as their own coverage state and never count toward reconciled-through; she can take one back. The coverage banner always says "Credit cards are not checked yet." (card reconciliation is not built).
+- API: `GET /workflow/state`, `POST /workflow/runs` (idempotent by client key), `GET /workflow/runs/{id}[/events]`, `POST .../answer`, `POST .../password`. Another user's run, events, answers and gaps return 404.
+- Fixed on the way: pdfminer logged raw statement text at DEBUG (now pinned to WARNING); concurrent starts with the same client key raced on the unique constraint.
+- Correction: the earlier commit message "all 108 tests pass on PostgreSQL" overstated. Only tests using the shared `workspace` fixture ran on PostgreSQL; older modules build their own SQLite engines. History was not rewritten.
+- Known limits: statement parsing is still synchronous inside the upload request (events are written stage by stage but not streamed); the in-memory saver is used on SQLite unit tests, so durable resume is proven on PostgreSQL only; there is no end-to-end browser test for an encrypted PDF (the backend test uses a real encrypted PDF).
 
 ## Current outcome
 
