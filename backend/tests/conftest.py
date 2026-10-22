@@ -171,3 +171,24 @@ class PrivacyProbe:
 def privacy_probe(caplog: pytest.LogCaptureFixture) -> PrivacyProbe:
     caplog.set_level(logging.DEBUG)
     return PrivacyProbe(caplog)
+
+
+def encrypted_statement_pdf(
+    path, password: str, rows: list[tuple[str, str, str, str, str]]
+) -> None:
+    """Write a real password-protected statement PDF (RC4, via reportlab) with a ruled table."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pdfencrypt import StandardEncryption
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
+
+    encryption = StandardEncryption(userPassword=password, ownerPassword=password + "-owner")
+    document = SimpleDocTemplate(str(path), pagesize=A4, encrypt=encryption)
+    table = Table(
+        [["Date", "Narration", "Withdrawal", "Deposit", "Closing Balance"], *map(list, rows)]
+    )
+    table.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.black)]))
+    document.build(
+        [Paragraph("HDFC Bank Statement of Account", getSampleStyleSheet()["Title"]), table]
+    )

@@ -40,3 +40,5 @@ export function loadCredentials(): Credentials {
 export function ensureAuthDirectory() {
   mkdirSync(path.dirname(AUTH_STATE), { recursive: true });
 }
+
+export const RESTART_MARKER = path.resolve(process.cwd(), "tests/e2e/.auth/restart-backend");
