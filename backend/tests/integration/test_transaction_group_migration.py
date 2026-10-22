@@ -47,6 +47,8 @@ def test_transaction_group_migration_backfills_and_rolls_back_without_movement_c
     engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
     email = f"group-migration-{uuid.uuid4().hex}@example.test"
     with Session(engine, expire_on_commit=False) as db:
+        # This schema predates the reconciliation evidence columns the invalidation hook uses.
+        db.info["skip_coverage_invalidation"] = True
         user = User(email=email, password_hash="unused", display_name="Group migration")
         db.add(user)
         db.flush()

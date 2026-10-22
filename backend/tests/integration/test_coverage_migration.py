@@ -68,6 +68,21 @@ def test_coverage_migration_preserves_data_defaults_new_columns_and_rolls_back()
             )
             .returning(accounts.c.id)
         ).scalar_one()
+        card_id = connection.execute(
+            accounts.insert()
+            .values(
+                user_id=user_id,
+                name="Legacy card",
+                bank_slug="yes",
+                account_hint="2222",
+                kind="credit_card",
+                currency="INR",
+                opening_balance=Decimal("0.00"),
+                created_at=now,
+                updated_at=now,
+            )
+            .returning(accounts.c.id)
+        ).scalar_one()
         reconciliation_id = connection.execute(
             reconciliations.insert()
             .values(
@@ -94,6 +109,10 @@ def test_coverage_migration_preserves_data_defaults_new_columns_and_rolls_back()
             select(reconciliations).where(reconciliations.c.id == reconciliation_id)
         ).one()
     assert account.in_scope is True
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(select(accounts.c.in_scope).where(accounts.c.id == card_id)) is False
+        )
     assert account.records_start is None and account.records_opening_balance is None
     assert account.opening_balance == Decimal("100.00")
     # Existing rows stay as they were and are treated as unverified until recomputed.
