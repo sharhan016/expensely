@@ -7,7 +7,10 @@ from difflib import SequenceMatcher
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.models import Person, Purpose, Transaction
+from app.models import Person, Purpose, Transaction, TransactionMeaning
+
+# Only decisions a person made or an explicit confirmed rule produced may teach future suggestions.
+CONFIRMED_DECISION_SOURCES = frozenset({"confirmed_rule", "user_confirmed"})
 
 _SPACE = re.compile(r"\s+")
 _LONG_IDENTIFIER = re.compile(r"\b\d{6,}\b")
@@ -18,6 +21,23 @@ def normalized_description(value: str) -> str:
     text = _LONG_IDENTIFIER.sub(" ", value.upper())
     text = _PUNCTUATION.sub(" ", text)
     return _SPACE.sub(" ", text).strip()
+
+
+def confirmed_history(db: Session, user_id: int) -> list[tuple[str, Purpose]]:
+    """Descriptions and purposes the owner actually confirmed; never the assistant's own output."""
+    return [
+        (description, purpose)
+        for description, purpose in db.execute(
+            select(Transaction.description, TransactionMeaning.purpose)
+            .join(TransactionMeaning, TransactionMeaning.transaction_id == Transaction.id)
+            .where(
+                Transaction.user_id == user_id,
+                TransactionMeaning.user_id == user_id,
+                TransactionMeaning.purpose != Purpose.OTHER,
+                TransactionMeaning.decision_source.in_(CONFIRMED_DECISION_SOURCES),
+            )
+        ).all()
+    ]
 
 
 def suggest_from_history(

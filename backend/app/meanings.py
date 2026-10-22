@@ -60,6 +60,7 @@ def apply_meaning_change(
     category: str | None = None,
     expected_version: int | None = None,
     reason: str = "",
+    decision_source: str = "user_confirmed",
 ) -> TransactionMeaning:
     meaning = ensure_meaning(db, transaction)
     if expected_version is not None and expected_version != meaning.version:
@@ -108,7 +109,7 @@ def apply_meaning_change(
     if category != meaning.category:
         meaning.category_confidence = "confirmed"
         meaning.classification_evidence = {"category": {"source": "user_correction"}}
-        meaning.decision_source = "user_confirmed"
+    meaning.decision_source = decision_source
     meaning.category = category
     meaning.notes = notes
     meaning.version += 1

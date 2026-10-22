@@ -43,6 +43,7 @@ from app.security import current_user
 from app.services import (
     assign_ordinals,
     calculate_reconciliation,
+    confirmed_history,
     dedupe_hash,
     movement_key,
     suggest_from_history,
@@ -51,6 +52,16 @@ from app.transfer_matching import match_card_payments, match_card_refunds
 
 router = APIRouter(prefix="/imports", tags=["statement imports"])
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".txt"}
+
+
+def _mark_purpose_confirmed(row: ImportRow) -> None:
+    """A purpose the user chose while reviewing is a confirmed decision, unlike a suggestion."""
+    row.confidence = "confident"
+    row.decision_source = "user_confirmed"
+    row.classification_evidence = {
+        **row.classification_evidence,
+        "purpose": {"source": "user_confirmed"},
+    }
 
 
 def _owned_import(db: Session, import_id: uuid.UUID, user_id: int) -> StatementImport:
@@ -170,13 +181,7 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
             ClassificationRule.is_active.is_(True),
         )
     ).all()
-    history = list(
-        db.execute(
-            select(Transaction.description, Transaction.purpose).where(
-                Transaction.user_id == user_id, Transaction.purpose != Purpose.OTHER
-            )
-        ).all()
-    )
+    history = confirmed_history(db, user_id)
     alias_rows = db.execute(
         select(CounterpartyAlias, Counterparty)
         .join(Counterparty, Counterparty.id == CounterpartyAlias.counterparty_id)
@@ -492,6 +497,8 @@ def update_import_row(
             "category": {"source": "user_correction"},
         }
         row.decision_source = "user_confirmed"
+    if "purpose" in changes:
+        _mark_purpose_confirmed(row)
     db.commit()
     db.refresh(row)
     return row
@@ -538,6 +545,8 @@ def bulk_update_import_rows(
                 "category": {"source": "user_correction"},
             }
             row.decision_source = "user_confirmed"
+        if "purpose" in changes:
+            _mark_purpose_confirmed(row)
     db.commit()
     return selected_rows
 

@@ -72,6 +72,7 @@ def _mark_as_transfer(db: Session, transaction: Transaction, user_id: int) -> st
             counterparty_id=meaning.counterparty_id,
             notes=meaning.notes,
             reason="Automatically linked the matching credit-card payment",
+            decision_source="automatic_rule",
         )
     return previous
 
@@ -271,6 +272,7 @@ def match_card_refunds(db: Session, user_id: int) -> list[TransactionLink]:
                 counterparty_id=meaning.counterparty_id,
                 notes=meaning.notes,
                 reason="Automatically linked the matching card refund or reversal",
+                decision_source="automatic_rule",
             )
         link = TransactionLink(
             user_id=user_id,
