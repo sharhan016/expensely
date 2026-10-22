@@ -9,6 +9,7 @@ import "./card-semantics.css";
 import "./password.css";
 import "./account-binding.css";
 import "./management.css";
+import "./records.css";
 
 export const metadata = {
   title: "Expense Analyzer",

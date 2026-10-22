@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Landmark, WalletCards, HandCoins, CircleAlert, ArrowUpRight, Minus, Equal } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { CoverageBanner } from "@/components/CoverageBanner";
 import Link from "next/link";
 import { api, inr } from "@/lib/api";
 import { asOfLabel } from "@/lib/ledger";
@@ -23,7 +24,7 @@ export default function Home() {
       </header>
 
       <WorkspaceState loading={loading} error={error}/>
-      {!loading&&!error&&<><p className={summary.is_stale?"balance-context stale":"balance-context"} role="status">{asOfLabel(summary)}</p><section className="fund-equation" aria-label="Available funds calculation">
+      {!loading&&!error&&<><CoverageBanner/><p className={summary.is_stale?"balance-context stale":"balance-context"} role="status">{asOfLabel(summary)}</p><section className="fund-equation" aria-label="Available funds calculation">
         <Metric icon={<Landmark/>} label="Total bank balance" value={inr(summary.bank_balance)} detail={`Across ${summary.account_count} accounts`} />
         <Minus className="operator"/>
         <Metric icon={<HandCoins/>} label="Entrusted funds" value={inr(summary.entrusted_balance)} detail="Belongs to other people" tone="ochre"/>

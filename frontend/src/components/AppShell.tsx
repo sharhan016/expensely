@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bot, BookOpenText, Home, Landmark, Menu, Palette, Plane, ReceiptText, Rows3, Scale, Settings, Users, Waypoints, X } from "lucide-react";
+import { Bot, BookOpenText, ClipboardCheck, Home, Landmark, Menu, Palette, Plane, ReceiptText, Rows3, Scale, Settings, Users, Waypoints, X } from "lucide-react";
 
 const navGroups = [
   { label: "Overview", items: [["Home", Home, "/"], ["Assistant", Bot, "/assistant"]] },
-  { label: "Ledger", items: [["Accounts & Import", Landmark, "/imports"], ["Transactions", Rows3, "/transactions"], ["Flows", Waypoints, "/flows"], ["Reconciliation", Scale, "/reconciliation"]] },
+  { label: "Ledger", items: [["Accounts & Import", Landmark, "/imports"], ["Transactions", Rows3, "/transactions"], ["Flows", Waypoints, "/flows"], ["Records", ClipboardCheck, "/records"], ["Reconciliation", Scale, "/reconciliation"]] },
   { label: "Manage", items: [["People & Funds", Users, "/people"], ["Reimbursements", ReceiptText, "/reimbursements"], ["Trips", Plane, "/trips"], ["Settings", Settings, "/settings"]] },
 ] as const;
 const themes = ["cobalt", "emerald", "amber", "coral", "indigo", "slate"];

@@ -252,6 +252,7 @@ def _segment_json(segment) -> dict:
         "days": (segment.end - segment.start).days + 1,
         "detail": segment.detail,
         "statement_id": segment.key,
+        "unbridged": segment.unbridged,
     }
 
 
@@ -295,6 +296,7 @@ def coverage_report(db: Session, user_id: int, *, today: date | None = None) -> 
             "lagging_name": overall.lagging_name,
             "in_scope_count": overall.in_scope_count,
             "summary": describe_overall(overall, today=today),
+            "banner": _banner(entries, overall, today),
         },
         "accounts": [
             _account_json(entry, account, entry.coverage, today)
@@ -303,12 +305,8 @@ def coverage_report(db: Session, user_id: int, *, today: date | None = None) -> 
     }
 
 
-def coverage_sentence(db: Session, user_id: int, *, today: date | None = None) -> str:
-    """One plain line for banners: overall status plus the first thing that is missing."""
-    today = today or date.today()
-    accounts = db.scalars(select(Account).where(Account.user_id == user_id)).all()
-    entries = [account_entry(db, account) for account in accounts]
-    overall = overall_coverage(entries)
+def _banner(entries: list[AccountEntry], overall, today: date) -> str:
+    """One plain line: overall status plus the first thing missing for the lagging account."""
     text = describe_overall(overall, today=today)
     laggard = next(
         (entry for entry in entries if entry.account_id == overall.lagging_account_id), None
@@ -322,3 +320,10 @@ def coverage_sentence(db: Session, user_id: int, *, today: date | None = None) -
         )
         text += f" Next problem ({laggard.name}): {problem.kind.replace('_', ' ')} at {span}."
     return text
+
+
+def coverage_sentence(db: Session, user_id: int, *, today: date | None = None) -> str:
+    today = today or date.today()
+    accounts = db.scalars(select(Account).where(Account.user_id == user_id)).all()
+    entries = [account_entry(db, account) for account in accounts]
+    return _banner(entries, overall_coverage(entries), today)

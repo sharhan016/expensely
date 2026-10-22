@@ -40,6 +40,7 @@ class Segment:
     end: date
     detail: str = ""
     key: str | None = None
+    unbridged: bool = False
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,11 @@ def compute_coverage(
             gap_start, gap_end = cursor_end + DAY, item.start - DAY
             if comparable and cursor_closing == item.opening:
                 if (gap_start, gap_end) in unbridged:
-                    segments.append(Segment("gap", gap_start, gap_end, "You un-bridged this gap."))
+                    segments.append(
+                        Segment(
+                            "gap", gap_start, gap_end, "You un-bridged this gap.", unbridged=True
+                        )
+                    )
                     link_ok = False
                 else:
                     segments.append(

@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bot, FileText, Paperclip, Send, Sparkles, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { CoverageBanner } from "@/components/CoverageBanner";
 
 type MessageContext = {
   kind?: string;
@@ -124,6 +125,7 @@ export default function AssistantPage() {
           </div>
           <span className="assistant-local"><i /> Local analysis</span>
         </header>
+        <CoverageBanner />
 
         <div ref={feed} className="assistant-feed" aria-live="polite" aria-busy={loading || busy}>
           {loading && <p className="assistant-status">Opening your private conversation…</p>}
