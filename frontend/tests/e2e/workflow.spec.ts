@@ -209,3 +209,106 @@ test("money sent to a person is unknown until she says, then tracked and settled
   await expect(page.getByRole("button", { name: "Marked as income" })).toHaveCount(0);
   await noSideScroll(page);
 });
+
+const debit = (date: string, amount: string, balance: string) =>
+  `${date},UPI/DR/001/RAVI/YESB/ravi@okaxis/SYNTHETIC LUNCH,${amount},,${balance}\n`;
+
+test("writing off sent-out money and undoing it at 390px", async ({ page }) => {
+  await registerFresh(page, "writeoff");
+  await confirmUpload(page, "jan-wo.csv", header + debit("05/01/2026", "200.00", "800.00") + debit("10/01/2026", "300.00", "500.00"));
+  await page.goto("/assistant");
+  await page.getByRole("group", { name: /Question about/ }).getByRole("button", { name: "I expect it back" }).click({ timeout: 30_000 });
+  const still = page.getByRole("list", { name: "Still out" });
+  await expect(still).toContainText("₹500.00 still out of ₹500.00");
+
+  await still.getByRole("button", { name: "Write off" }).click();
+  await expect(still).toContainText("Written off (not counted)");
+  await noSideScroll(page);
+  await page.goto("/report");
+  await page.getByLabel("From", { exact: true }).fill("2026-01-01");
+  await page.getByLabel("To", { exact: true }).fill("2026-01-31");
+  await page.getByRole("button", { name: "Show report" }).click();
+  await expect(page.getByTestId("report-summary")).toContainText("Written off (not counted): ₹500.00");
+  await expect(page.getByTestId("report-summary")).not.toContainText("Sent out and expected back");
+  await expect(page.getByRole("button", { name: "Written off (not counted)" })).toBeVisible();
+
+  await page.goto("/assistant");
+  await page.getByRole("list", { name: "Still out" }).getByRole("button", { name: "Undo write-off" }).click();
+  await expect(page.getByRole("list", { name: "Still out" })).toContainText("₹500.00 still out of ₹500.00");
+  await page.goto("/report");
+  await page.getByLabel("From", { exact: true }).fill("2026-01-01");
+  await page.getByLabel("To", { exact: true }).fill("2026-01-31");
+  await page.getByRole("button", { name: "Show report" }).click();
+  await expect(page.getByTestId("report-summary")).toContainText("Sent out and expected back: ₹500.00");
+  await expect(page.getByTestId("report-summary")).not.toContainText("Written off");
+});
+
+test("remembering an answer for a person, seeing it applied, and removing it at 390px", async ({ page }) => {
+  await registerFresh(page, "remember");
+  await confirmUpload(page, "jan-rem.csv", header + debit("05/01/2026", "200.00", "800.00") + debit("10/01/2026", "300.00", "500.00"));
+  await page.goto("/assistant");
+  const question = page.getByRole("group", { name: /Question about/ });
+  await expect(question).toContainText("You sent 2 payments", { timeout: 30_000 });
+  await expect(question.getByLabel("Remember my answer for this person")).not.toBeChecked(); // off by default
+  await question.getByLabel("Remember my answer for this person").check();
+  await question.getByRole("button", { name: "It was an expense" }).click();
+  await expect(page.getByRole("group", { name: /Question about/ })).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Remembered choices" })).toContainText("counted as expenses automatically (0 later payments so far)");
+
+  // A later payment is applied automatically, and disclosed.
+  await confirmUpload(page, "feb-rem.csv", header + "10/02/2026,QR PAYMENT ravi@okaxis,100.00,,400.00\n");
+  await page.goto("/assistant");
+  await expect(page.getByRole("list", { name: "Remembered choices" })).toContainText("(1 later payment so far)");
+  await expect(page.getByRole("group", { name: /Question about/ })).toHaveCount(0);
+  await noSideScroll(page);
+
+  // Undo: the applied payment becomes a question again and she stops being remembered.
+  await page.getByRole("button", { name: "Undo applied and stop remembering" }).click();
+  await expect(page.getByRole("list", { name: "Remembered choices" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: /Question about/ })).toContainText("You sent 1 payment totalling ₹100.00");
+});
+
+test("a recorded loan is proposed as an expectation, accepted and reverted at 390px", async ({ page }) => {
+  await registerFresh(page, "loan");
+  await confirmUpload(
+    page,
+    "jan-loan.csv",
+    header + debit("05/01/2026", "200.00", "800.00") + debit("10/01/2026", "300.00", "500.00") +
+      "20/01/2026,UPI/CR/009/RAVI/YESB/ravi@okaxis/SYNTHETIC BACK,,100.00,600.00\n",
+  );
+  // Record them as loans to a person (the existing way to classify), through the signed-in API.
+  const person = await (await page.request.post("/api/people", { data: { name: "Meera Synthetic" } })).json();
+  const listed = await (await page.request.get("/api/transactions?limit=50")).json();
+  for (const item of listed.items) {
+    const purpose = Number(item.amount) < 0 ? "loan_given" : "loan_repayment";
+    const response = await page.request.patch(`/api/transactions/${item.id}`, {
+      data: { purpose, person_id: person.id, expected_version: item.meaning_version },
+    });
+    expect(response.ok()).toBe(true);
+  }
+
+  await page.goto("/assistant");
+  const proposal = page.getByRole("group", { name: "Loans to Meera Synthetic" });
+  await expect(proposal).toContainText("2 loans totalling ₹500.00", { timeout: 30_000 });
+  await expect(proposal).toContainText("1 repayment totalling ₹100.00");
+  await expect(proposal).toContainText("Nothing changes until you say yes");
+  await noSideScroll(page);
+
+  await proposal.getByRole("button", { name: "Yes, track them" }).click();
+  const still = page.getByRole("list", { name: "Still out" });
+  await expect(still).toContainText("Meera Synthetic");
+  await expect(still).toContainText("₹400.00 still out of ₹500.00");
+  await expect(still).toContainText("from your recorded loans");
+  await expect(page.getByRole("group", { name: "Loans to Meera Synthetic" })).toHaveCount(0);
+
+  await still.getByRole("button", { name: "Undo mapping" }).click();
+  await expect(page.getByRole("list", { name: "Still out" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Loans to Meera Synthetic" })).toBeVisible();
+
+  await page.goto("/report");
+  await page.getByLabel("From", { exact: true }).fill("2026-01-01");
+  await page.getByLabel("To", { exact: true }).fill("2026-01-31");
+  await page.getByRole("button", { name: "Show report" }).click();
+  await expect(page.getByTestId("obligation-note")).toContainText("Entrusted money and reimbursements stay in their own group");
+  await noSideScroll(page);
+});
