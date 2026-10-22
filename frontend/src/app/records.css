@@ -43,3 +43,11 @@
 .workflow-events{margin:0;padding-left:18px;color:var(--muted)}
 .workflow-events .waiting{color:var(--ink);font-weight:600}
 @media(min-width:640px){.workflow-actions{grid-template-columns:1fr 1fr}.workflow-question form{grid-template-columns:1fr 1fr auto;align-items:end}}
+.report-form{display:grid;gap:10px;margin-bottom:16px}.report-form label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.report-form input{min-height:44px;padding:0 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink)}
+.report-summary{margin:0 0 10px;font-size:15px;line-height:1.55}
+.report-coverage{margin:0 0 12px;padding:10px 12px 10px 28px;border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted)}
+.report-coverage.partial{border-color:#d9a441;background:#fff8e6;color:#6b4a00}
+.report-actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.report-body h2{margin:18px 0 8px;font-size:15px}
+@media(min-width:640px){.report-form{grid-template-columns:200px 200px auto;align-items:end}}
+@media print{.side,.topbar,.menu-button,.report-form,.report-actions,.nav-scrim{display:none!important}.app-shell{display:block}}

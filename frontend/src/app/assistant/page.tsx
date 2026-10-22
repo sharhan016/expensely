@@ -4,7 +4,6 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bot, FileText, Paperclip, Send, Sparkles, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
-import { CoverageBanner } from "@/components/CoverageBanner";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 type MessageContext = {
@@ -131,7 +130,6 @@ export default function AssistantPage() {
         </header>
 
         <div ref={feed} className="assistant-feed" aria-live="polite" aria-busy={loading || busy}>
-          <CoverageBanner />
           <WorkflowPanel refreshKey={panelKey} />
           {loading && <p className="assistant-status">Opening your private conversation…</p>}
           {!loading && messages.length === 0 && (

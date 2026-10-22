@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.balances import account_balances, overall_context
 from app.cash import cash_summary
+from app.coverage import date_label
 from app.coverage_service import coverage_sentence
 from app.database import get_db
 from app.models import (
@@ -21,6 +22,7 @@ from app.models import (
     TransactionMeaning,
     User,
 )
+from app.period_report import build_report, parse_range
 from app.schemas import AssistantMessageResponse, AssistantTurnRequest
 from app.security import current_user
 from app.services import calculate_reconciliation, legacy_unconfirmed_count
@@ -311,6 +313,39 @@ def _workspace_answer(db: Session, user_id: int, message: str) -> tuple[str, dic
     )
 
 
+def _report_reply(db: Session, user_id: int, message: str) -> tuple[str, dict] | None:
+    """Answer "5 October to 20 October" style requests from the period report."""
+    last = db.scalar(
+        select(AssistantMessage)
+        .where(AssistantMessage.user_id == user_id, AssistantMessage.role == "assistant")
+        .order_by(AssistantMessage.id.desc())
+        .limit(1)
+    )
+    pending = last.context if last and last.context.get("kind") == "range_confirm" else None
+    if pending and message.strip().casefold().rstrip(".!") in {"yes", "y", "confirm", "ok", "okay"}:
+        start, end = date.fromisoformat(pending["start"]), date.fromisoformat(pending["end"])
+    else:
+        parsed = parse_range(message, today=date.today())
+        if parsed is None:
+            return None
+        if parsed.assumed:
+            return (
+                f"I read that as {date_label(parsed.start)} to {date_label(parsed.end)}. "
+                "Say yes to continue, or tell me the dates in full.",
+                {
+                    "kind": "range_confirm",
+                    "start": parsed.start.isoformat(),
+                    "end": parsed.end.isoformat(),
+                },
+            )
+        start, end = parsed.start, parsed.end
+    report = build_report(db, user_id, start, end)
+    return (
+        f"{report['summary']} Open the Report page for the day-by-day table and to copy it.",
+        {"kind": "period_report", "start": start.isoformat(), "end": end.isoformat()},
+    )
+
+
 @router.get("/messages", response_model=list[AssistantMessageResponse])
 def messages(db: Session = Depends(get_db), user: User = Depends(current_user)):
     return db.scalars(
@@ -353,7 +388,9 @@ def assistant_turn(
     if statements:
         reply, context = _import_reply(statements)
     else:
-        reply, context = _workspace_reply(db, user.id, message)
+        reply, context = _report_reply(db, user.id, message) or _workspace_reply(
+            db, user.id, message
+        )
     assistant_message = AssistantMessage(
         user_id=user.id,
         role="assistant",

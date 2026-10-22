@@ -33,6 +33,7 @@ from app.models import (
     User,
 )
 from app.ownership import validate_financial_associations
+from app.report_routes import router as report_router
 from app.schemas import (
     AccountResponse,
     AccountUpdate,
@@ -96,6 +97,7 @@ app.include_router(assistant_router)
 app.include_router(coverage_router)
 app.include_router(cash_router)
 app.include_router(workflow_router)
+app.include_router(report_router)
 app.include_router(action_router)
 
 
