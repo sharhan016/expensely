@@ -338,3 +338,71 @@ test("pages a long ledger honestly and dates every balance", async ({ page }) =>
   await expect(page.getByRole("status").filter({ hasText: `As of ${lastLabel}` })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "not today's balance" })).toBeVisible();
 });
+
+test("shows what my records cover, bridges a gap visibly and tracks cash", async ({ page }) => {
+  const email = `records-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Create a private workspace" }).click();
+  await page.getByLabel("Your name").fill("Records Test");
+  await page.getByLabel("Email").fill(email);
+  await page.locator('input[name="password"]').fill("local-test-password");
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page).toHaveURL("/");
+
+  const header =
+    "YES BANK Statement,,,,\nAccount Type: Current,,,,\nAccount Number: 0012XXXX7788,,,,\n" +
+    "Date,Narration,Withdrawal,Deposit,Closing Balance\n";
+  const statements = [
+    {
+      name: "yes-jan.csv",
+      body:
+        header +
+        "01/01/2026,UPI/DR/001/SHOP/YESB/shop@okaxis/SYNTHETIC SHOP,100.00,,900.00\n" +
+        "05/01/2026,ATM WDL SYNTHETIC BRANCH,300.00,,600.00\n" +
+        "20/01/2026,UPI/DR/002/SHOP/YESB/shop@okaxis/SYNTHETIC SHOP,100.00,,500.00\n",
+    },
+    {
+      // Opens at 500.00, exactly where January closed, but starts weeks later.
+      name: "yes-mar.csv",
+      body: header + "10/03/2026,UPI/DR/003/SHOP/YESB/shop@okaxis/SYNTHETIC SHOP,50.00,,450.00\n",
+    },
+  ];
+  for (const statement of statements) {
+    await page.goto("/imports");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: statement.name,
+      mimeType: "text/csv",
+      buffer: Buffer.from(statement.body),
+    });
+    await page.getByRole("button", { name: "Extract transactions" }).click();
+    await expect(page.getByText("Extraction result")).toBeVisible();
+    await page.getByRole("button", { name: /Confirm to ledger/ }).click();
+    await expect(page.getByText(/added to the ledger/)).toBeVisible();
+  }
+
+  await page.getByRole("link", { name: "Records" }).click();
+  await expect(page.getByRole("heading", { name: "Records and coverage" })).toBeVisible();
+  const overall = page.getByTestId("overall-summary");
+  await expect(overall).toContainText("reconciled through 10 Mar 2026");
+  await expect(page.getByText("Bridged: balances connect, but no statement rows for these dates")).toBeVisible();
+  await expect(page.getByText("21 Jan 2026 to 9 Mar 2026")).toBeVisible();
+
+  await page.getByRole("button", { name: "Un-bridge" }).click();
+  await expect(overall).toContainText("reconciled through 20 Jan 2026");
+  await expect(page.getByText("Not covered").first()).toBeVisible();
+  await page.getByRole("button", { name: "Bridge again" }).click();
+  await expect(overall).toContainText("reconciled through 10 Mar 2026");
+
+  await expect(page.getByTestId("cash-summary")).toContainText("Withdrawn, not yet explained: ₹300.00 since 5 Jan 2026");
+  await expect(page.getByText(/not a cash balance/)).toBeVisible();
+  await page.getByLabel("Date", { exact: true }).fill("2026-01-12");
+  await page.getByLabel("Amount", { exact: true }).fill("120.00");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByTestId("cash-summary")).toContainText("₹180.00");
+  await expect(page.getByText(/No statement behind this/)).toBeVisible();
+  // Cash entries never move the reconciled-through date.
+  await expect(overall).toContainText("reconciled through 10 Mar 2026");
+
+  await page.goto("/");
+  await expect(page.getByTestId("coverage-banner")).toContainText("reconciled through 10 Mar 2026");
+});

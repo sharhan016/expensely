@@ -67,6 +67,8 @@ def test_gap_with_matching_balances_is_bridged_and_can_be_unbridged(workspace):
     unbridged = workspace.client.post(f"/coverage/accounts/{account.id}/unbridged-gaps", json=gap)
     assert unbridged.status_code == 200
     assert acct(unbridged.json(), account)["reconciled_through"] == "2026-01-31"
+    flagged = [s for s in acct(unbridged.json(), account)["segments"] if s["unbridged"]]
+    assert [(s["kind"], s["start"]) for s in flagged] == [("gap", "2026-02-01")]
     # Doing it twice changes nothing.
     again = workspace.client.post(f"/coverage/accounts/{account.id}/unbridged-gaps", json=gap)
     assert acct(again.json(), account)["reconciled_through"] == "2026-01-31"
