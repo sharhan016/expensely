@@ -88,3 +88,72 @@ test("first visit, return with a gap, not needed, server restart and records at 
   await expect(page.getByText("Noted your answer about those dates.").last()).toBeVisible();
   await expect(page.getByTestId("question")).toHaveCount(0);
 });
+
+async function registerFresh(page: import("@playwright/test").Page, label: string) {
+  const email = `${label}-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Create a private workspace" }).click();
+  await page.getByLabel("Your name").fill("Phone Test");
+  await page.getByLabel("Email").fill(email);
+  await page.locator('input[name="password"]').fill("local-test-password");
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page).toHaveURL("/");
+}
+
+test("asking where an amount went shows an answer card and opens the evidence at 390px", async ({ page }) => {
+  await registerFresh(page, "ask");
+  await confirmUpload(
+    page,
+    "jan-ask.csv",
+    header +
+      row("05/01/2026", "1200.00", "8800.00") +
+      row("10/01/2026", "500.00", "8300.00").replace("UPI/DR/001/SHOP/YESB/shop@okaxis/SYNTHETIC SHOP", "ATM WDL SYNTHETIC BRANCH") +
+      row("12/01/2026", "700.00", "7600.00").replace("UPI/DR/001/SHOP/YESB/shop@okaxis/SYNTHETIC SHOP", "ATM WDL SYNTHETIC BRANCH"),
+  );
+
+  await page.goto("/assistant");
+  await page.getByLabel("Message your financial assistant").fill("where did my 1200 go");
+  await page.getByLabel("Send message").click();
+  const card = page.getByRole("group", { name: "What I found" });
+  await expect(card).toContainText("I found 1 movement of exactly ₹1,200.00: money out on 5 Jan 2026.", { timeout: 30_000 });
+  await expect(card).toContainText("Possible, not a cause: ATM withdrawals of ₹500.00 on 10 Jan 2026 and ₹700.00 on 12 Jan 2026 add up to ₹1,200.00.");
+  await expect(card).toContainText("I cannot tell from the records why money moved.");
+  await noSideScroll(page);
+
+  await card.getByRole("button", { name: "Open the 1 record" }).first().click();
+  const evidence = card.getByRole("table", { name: "Evidence rows" });
+  await expect(evidence).toContainText("SYNTHETIC SHOP");
+  await expect(evidence).toContainText("1,200.00");
+  await noSideScroll(page);
+
+  await page.getByLabel("Message your financial assistant").fill("where did my 999 go");
+  await page.getByLabel("Send message").click();
+  await expect(page.getByText("I found nothing in my records that matches ₹999.00.")).toBeVisible();
+  await expect(page.getByText("Roughly when did it happen? Even a month helps.").last()).toBeVisible();
+});
+
+test("the report page works at 390px and asks for statements when a range is empty", async ({ page }) => {
+  await registerFresh(page, "report390");
+  await confirmUpload(page, "jan-report.csv", header + row("05/01/2026", "100.00", "900.00") + row("10/01/2026", "50.00", "850.00"));
+
+  await page.goto("/report");
+  await page.getByLabel("From", { exact: true }).fill("2026-01-01");
+  await page.getByLabel("To", { exact: true }).fill("2026-01-31");
+  await page.getByRole("button", { name: "Show report" }).click();
+  await expect(page.getByTestId("report-summary")).toContainText("2 movements");
+  await noSideScroll(page);
+  await page.getByRole("button", { name: "Not yet explained" }).click();
+  await expect(page.getByRole("table", { name: "Rows" })).toContainText("SYNTHETIC SHOP");
+  await expect(page.getByText("Showing all 2")).toBeVisible();
+  await noSideScroll(page);
+
+  await page.getByLabel("From", { exact: true }).fill("2025-06-01");
+  await page.getByLabel("To", { exact: true }).fill("2025-06-30");
+  await page.getByRole("button", { name: "Show report" }).click();
+  await expect(page.getByTestId("report-summary")).toContainText("Send me the statements that cover these dates");
+  await expect(page.getByRole("button", { name: "Not yet explained" })).toHaveCount(0); // no zero tables
+  await noSideScroll(page);
+
+  await page.goto("/");
+  await expect(page.getByTestId("period-summary")).toBeVisible();
+});

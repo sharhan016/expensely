@@ -121,8 +121,8 @@ def test_every_total_drills_down_to_exactly_its_rows(workspace):
     for name, info in body["buckets"].items():
         rows = workspace.client.get(
             "/reports/period/rows",
-            params={"from": "2026-01-01", "to": "2026-01-31", "bucket": name},
-        ).json()
+            params={"from": "2026-01-01", "to": "2026-01-31", "bucket": name, "limit": 500},
+        ).json()["items"]
         assert len(rows) == info["count"]
         assert sum(
             (Decimal(r["amount"]) for r in rows if Decimal(r["amount"]) < 0), Decimal(0)
@@ -131,7 +131,7 @@ def test_every_total_drills_down_to_exactly_its_rows(workspace):
     day_rows = workspace.client.get(
         "/reports/period/rows",
         params={"from": "2026-01-01", "to": "2026-01-31", "date": "2026-01-03"},
-    ).json()
+    ).json()["items"]
     assert (day["count"], day["out"]) == (2, "125.50") and len(day_rows) == 2
 
 

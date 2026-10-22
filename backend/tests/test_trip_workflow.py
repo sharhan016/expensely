@@ -144,7 +144,7 @@ def test_dashboard_keeps_credit_card_debt_out_of_bank_balance():
         )
         db.commit()
 
-        result = dashboard(db, user)
+        result = dashboard(None, None, db, user)
         assert Decimal(result["bank_balance"]) == Decimal("6000")
         assert Decimal(result["available_balance"]) == Decimal("6000")
         assert Decimal(result["credit_card_balance"]) == Decimal("750")
