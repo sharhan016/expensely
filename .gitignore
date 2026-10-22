@@ -2,6 +2,9 @@
 /reference/
 /frontend/AGENTS.md
 
+# Local agent handoff state
+/AGENT_PROGRESS.md
+
 # Local configuration and secrets
 .env
 .env.local
