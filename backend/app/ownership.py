@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Employer, Person, Purpose, Trip
+from app.models import Counterparty, Employer, Person, Purpose, Trip
 
 
 @dataclass(frozen=True)
@@ -12,6 +12,7 @@ class FinancialAssociations:
     person_id: int | None
     employer_id: int | None
     trip_id: int | None
+    counterparty_id: int | None
 
 
 def _require_owned(db: Session, model, entity_id: int | None, user_id: int, label: str) -> None:
@@ -30,6 +31,7 @@ def validate_financial_associations(
     person_id: int | None,
     employer_id: int | None,
     trip_id: int | None = None,
+    counterparty_id: int | None = None,
 ) -> FinancialAssociations:
     if purpose is None:
         raise HTTPException(status_code=422, detail="Purpose is required")
@@ -37,6 +39,7 @@ def validate_financial_associations(
     _require_owned(db, Person, person_id, user_id, "Person")
     _require_owned(db, Employer, employer_id, user_id, "Employer")
     _require_owned(db, Trip, trip_id, user_id, "Trip")
+    _require_owned(db, Counterparty, counterparty_id, user_id, "Counterparty")
 
     if purpose in {Purpose.BUSINESS, Purpose.REIMBURSEMENT} and employer_id is None:
         employer_id = db.scalar(
@@ -63,4 +66,5 @@ def validate_financial_associations(
         person_id=person_id,
         employer_id=employer_id,
         trip_id=trip_id,
+        counterparty_id=counterparty_id,
     )

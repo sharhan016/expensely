@@ -269,6 +269,7 @@ def decide_trip_transaction(
         person_id=meaning.person_id,
         employer_id=meaning.employer_id,
         trip_id=trip_id,
+        counterparty_id=meaning.counterparty_id,
         notes=meaning.notes,
         reason=f"Trip review: {payload.status}",
     )

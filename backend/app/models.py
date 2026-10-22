@@ -111,6 +111,8 @@ class StatementImport(TimestampMixin, Base):
     period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     opening_balance: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     closing_balance: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    reconciliation_status: Mapped[str] = mapped_column(String(20), default="unavailable")
+    reconciliation_difference: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     overlap_warning: Mapped[bool] = mapped_column(Boolean, default=False)
     error_message: Mapped[str] = mapped_column(Text, default="")
     rows: Mapped[list[ImportRow]] = relationship(cascade="all, delete-orphan")
@@ -131,6 +133,13 @@ class ImportRow(Base):
     person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id"), nullable=True)
     employer_id: Mapped[int | None] = mapped_column(ForeignKey("employers.id"), nullable=True)
     trip_id: Mapped[int | None] = mapped_column(ForeignKey("trips.id"), nullable=True)
+    counterparty_id: Mapped[int | None] = mapped_column(
+        ForeignKey("counterparties.id", ondelete="SET NULL"), nullable=True
+    )
+    counterparty_name: Mapped[str] = mapped_column(String(160), default="")
+    counterparty_alias_type: Mapped[str] = mapped_column(String(32), default="")
+    counterparty_alias_value: Mapped[str] = mapped_column(String(180), default="")
+    counterparty_confidence: Mapped[str] = mapped_column(String(16), default="unresolved")
     confidence: Mapped[str] = mapped_column(String(16), default="unresolved")
     duplicate_of_id: Mapped[int | None] = mapped_column(
         ForeignKey("transactions.id"), nullable=True
@@ -146,6 +155,37 @@ class Person(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(120))
     relationship_label: Mapped[str] = mapped_column(String(80), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
+
+
+class Counterparty(TimestampMixin, Base):
+    __tablename__ = "counterparties"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    display_name: Mapped[str] = mapped_column(String(160))
+    kind: Mapped[str] = mapped_column(String(24), default="unknown")
+    default_purpose: Mapped[Purpose | None] = mapped_column(Enum(Purpose), nullable=True)
+    is_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    aliases: Mapped[list[CounterpartyAlias]] = relationship(
+        back_populates="counterparty", cascade="all, delete-orphan"
+    )
+
+
+class CounterpartyAlias(TimestampMixin, Base):
+    __tablename__ = "counterparty_aliases"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "alias_type", "alias_value", name="uq_counterparty_alias_owner_type_value"
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    counterparty_id: Mapped[int] = mapped_column(
+        ForeignKey("counterparties.id", ondelete="CASCADE"), index=True
+    )
+    alias_type: Mapped[str] = mapped_column(String(32))
+    alias_value: Mapped[str] = mapped_column(String(180))
+    is_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    counterparty: Mapped[Counterparty] = relationship(back_populates="aliases")
 
 
 class Employer(TimestampMixin, Base):
@@ -235,10 +275,14 @@ class TransactionMeaning(TimestampMixin, Base):
     person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id"), nullable=True)
     employer_id: Mapped[int | None] = mapped_column(ForeignKey("employers.id"), nullable=True)
     trip_id: Mapped[int | None] = mapped_column(ForeignKey("trips.id"), nullable=True)
+    counterparty_id: Mapped[int | None] = mapped_column(
+        ForeignKey("counterparties.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     notes: Mapped[str] = mapped_column(Text, default="")
     version: Mapped[int] = mapped_column(default=1)
     review_status: Mapped[str] = mapped_column(String(20), default="current")
     transaction: Mapped[Transaction] = relationship(back_populates="meaning")
+    counterparty: Mapped[Counterparty | None] = relationship()
 
 
 class TransactionMeaningChange(Base):
@@ -253,6 +297,43 @@ class TransactionMeaningChange(Base):
     before_values: Mapped[dict] = mapped_column(JSON)
     after_values: Mapped[dict] = mapped_column(JSON)
     reason: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class TransactionLink(TimestampMixin, Base):
+    __tablename__ = "transaction_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "outflow_transaction_id",
+            "inflow_transaction_id",
+            name="uq_transaction_link_owner_pair",
+        ),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    link_type: Mapped[str] = mapped_column(String(32))
+    outflow_transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), index=True
+    )
+    inflow_transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="confirmed")
+    confidence: Mapped[str] = mapped_column(String(16), default="high")
+    decision_source: Mapped[str] = mapped_column(String(32), default="automatic_rule")
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    outflow_transaction: Mapped[Transaction] = relationship(foreign_keys=[outflow_transaction_id])
+    inflow_transaction: Mapped[Transaction] = relationship(foreign_keys=[inflow_transaction_id])
+
+
+class AssistantMessage(Base):
+    __tablename__ = "assistant_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text)
+    context: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

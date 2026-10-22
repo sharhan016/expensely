@@ -4,7 +4,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.assistant_routes import router as assistant_router
 from app.config import settings
+from app.counterparty_routes import router as counterparty_router
 from app.database import get_db
 from app.finance import router as finance_router
 from app.imports import router as imports_router
@@ -15,6 +17,7 @@ from app.models import (
     Person,
     StatementImport,
     Transaction,
+    TransactionMeaning,
     TransactionMeaningChange,
     User,
 )
@@ -36,6 +39,7 @@ from app.schemas import (
 )
 from app.security import create_session, current_user, hash_password, verify_password
 from app.services import person_balances
+from app.transfer_routes import router as transfer_router
 
 app = FastAPI(title="Expense Analyzer API", version="0.1.0")
 app.add_middleware(
@@ -47,6 +51,9 @@ app.add_middleware(
 )
 app.include_router(imports_router)
 app.include_router(finance_router)
+app.include_router(counterparty_router)
+app.include_router(transfer_router)
+app.include_router(assistant_router)
 
 
 def _transaction_response(transaction: Transaction) -> TransactionResponse:
@@ -59,6 +66,12 @@ def _transaction_response(transaction: Transaction) -> TransactionResponse:
             "person_id": transaction.meaning.person_id,
             "employer_id": transaction.meaning.employer_id,
             "trip_id": transaction.meaning.trip_id,
+            "counterparty_id": transaction.meaning.counterparty_id,
+            "counterparty_name": (
+                transaction.meaning.counterparty.display_name
+                if transaction.meaning.counterparty
+                else ""
+            ),
             "notes": transaction.meaning.notes,
             "meaning_version": transaction.meaning.version,
         }
@@ -185,7 +198,7 @@ def update_account(
 def transactions(db: Session = Depends(get_db), user: User = Depends(current_user)):
     rows = db.scalars(
         select(Transaction)
-        .options(selectinload(Transaction.meaning))
+        .options(selectinload(Transaction.meaning).selectinload(TransactionMeaning.counterparty))
         .where(Transaction.user_id == user.id)
         .order_by(Transaction.txn_date.desc(), Transaction.id.desc())
         .limit(500)
@@ -202,22 +215,28 @@ def update_transaction(
 ):
     transaction = db.scalar(
         select(Transaction)
-        .options(selectinload(Transaction.meaning))
+        .options(selectinload(Transaction.meaning).selectinload(TransactionMeaning.counterparty))
         .where(Transaction.id == transaction_id, Transaction.user_id == user.id)
     )
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    meaning = ensure_meaning(db, transaction)
     changes = payload.model_dump(exclude={"expected_version", "reason"}, exclude_unset=True)
-    purpose = changes.get("purpose", meaning.purpose)
+    current = transaction.meaning
+    purpose = changes.get("purpose", current.purpose if current else transaction.purpose)
     associations = validate_financial_associations(
         db,
         user_id=user.id,
         purpose=purpose,
-        person_id=changes.get("person_id", meaning.person_id),
-        employer_id=changes.get("employer_id", meaning.employer_id),
-        trip_id=changes.get("trip_id", meaning.trip_id),
+        person_id=changes.get("person_id", current.person_id if current else transaction.person_id),
+        employer_id=changes.get(
+            "employer_id", current.employer_id if current else transaction.employer_id
+        ),
+        trip_id=changes.get("trip_id", current.trip_id if current else transaction.trip_id),
+        counterparty_id=changes.get(
+            "counterparty_id", current.counterparty_id if current else None
+        ),
     )
+    meaning = ensure_meaning(db, transaction)
     apply_meaning_change(
         db,
         transaction=transaction,
@@ -226,6 +245,7 @@ def update_transaction(
         person_id=associations.person_id,
         employer_id=associations.employer_id,
         trip_id=associations.trip_id,
+        counterparty_id=associations.counterparty_id,
         notes=changes.get("notes", meaning.notes),
         expected_version=payload.expected_version,
         reason=payload.reason,

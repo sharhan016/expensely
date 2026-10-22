@@ -82,6 +82,8 @@ class TransactionResponse(ORMModel):
     person_id: int | None
     employer_id: int | None
     trip_id: int | None
+    counterparty_id: int | None = None
+    counterparty_name: str = ""
     notes: str
     meaning_version: int = 1
     created_at: datetime
@@ -94,6 +96,7 @@ class TransactionUpdate(BaseModel):
     person_id: int | None = None
     employer_id: int | None = None
     trip_id: int | None = None
+    counterparty_id: int | None = None
     notes: str | None = None
     expected_version: int | None = Field(default=None, ge=1)
     reason: str = Field(default="", max_length=500)
@@ -119,6 +122,11 @@ class ImportRowResponse(ORMModel):
     person_id: int | None
     employer_id: int | None
     trip_id: int | None
+    counterparty_id: int | None
+    counterparty_name: str
+    counterparty_alias_type: str
+    counterparty_alias_value: str
+    counterparty_confidence: str
     confidence: str
     duplicate_of_id: int | None
     selected: bool
@@ -141,6 +149,8 @@ class StatementImportResponse(ORMModel):
     period_end: date | None
     opening_balance: Decimal | None
     closing_balance: Decimal | None
+    reconciliation_status: str
+    reconciliation_difference: Decimal | None
     overlap_warning: bool
     error_message: str
     rows: list[ImportRowResponse] = []
@@ -152,6 +162,7 @@ class ImportRowUpdate(BaseModel):
     person_id: int | None = None
     employer_id: int | None = None
     trip_id: int | None = None
+    counterparty_id: int | None = None
 
 
 class ImportBulkUpdate(BaseModel):
@@ -161,6 +172,7 @@ class ImportBulkUpdate(BaseModel):
     person_id: int | None = None
     employer_id: int | None = None
     trip_id: int | None = None
+    counterparty_id: int | None = None
 
 
 class ImportConfirmRequest(BaseModel):
@@ -172,12 +184,14 @@ class ImportConfirmRequest(BaseModel):
     bank_slug: str | None = Field(
         default=None, min_length=2, max_length=40, pattern=r"^[a-z0-9_-]+$"
     )
+    allow_reconciliation_difference: bool = False
 
 
 class ImportConfirmResponse(BaseModel):
     imported: int
     skipped_duplicates: int
     account_id: int
+    linked_card_payments: int = 0
 
 
 class PdfPasswordRequest(BaseModel):
@@ -223,3 +237,83 @@ class ReconciliationCreate(BaseModel):
     period_end: date
     opening_balance: Decimal
     statement_closing_balance: Decimal
+
+
+class CounterpartyUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, min_length=1, max_length=160)
+    kind: str | None = Field(default=None, pattern=r"^(unknown|person|merchant|organization)$")
+    default_purpose: Purpose | None = None
+
+
+class CounterpartySummary(ORMModel):
+    id: int
+    display_name: str
+    kind: str
+    default_purpose: Purpose | None
+    is_confirmed: bool
+    paid_total: Decimal = Decimal("0")
+    received_total: Decimal = Decimal("0")
+    transaction_count: int = 0
+    unresolved_count: int = 0
+
+
+class CounterpartyPurposeTotal(BaseModel):
+    purpose: Purpose
+    paid: Decimal
+    received: Decimal
+    transaction_count: int
+
+
+class CounterpartyTransaction(BaseModel):
+    id: int
+    txn_date: date
+    description: str
+    amount: Decimal
+    purpose: Purpose
+
+
+class CounterpartyDetail(BaseModel):
+    counterparty: CounterpartySummary
+    purpose_totals: list[CounterpartyPurposeTotal]
+    transactions: list[CounterpartyTransaction]
+
+
+class CardPaymentLinkResponse(BaseModel):
+    id: int
+    status: str
+    confidence: str
+    decision_source: str
+    amount: Decimal
+    outflow_transaction_id: int
+    inflow_transaction_id: int
+    bank_account_name: str
+    card_account_name: str
+    bank_date: date
+    card_date: date
+
+
+class UnmatchedCardPaymentResponse(BaseModel):
+    transaction_id: int
+    amount: Decimal
+    txn_date: date
+    card_account_name: str
+    reason: str
+
+
+class TransactionLinkDecision(BaseModel):
+    status: str = Field(pattern=r"^(rejected)$")
+
+
+class AssistantTurnRequest(BaseModel):
+    message: str = Field(default="", max_length=4000)
+    import_ids: list[UUID] = Field(default_factory=list, max_length=20)
+
+
+class AssistantMessageResponse(ORMModel):
+    id: int
+    role: str
+    content: str
+    context: dict
+    created_at: datetime

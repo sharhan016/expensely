@@ -21,6 +21,7 @@ def ensure_meaning(db: Session, transaction: Transaction) -> TransactionMeaning:
         person_id=transaction.person_id,
         employer_id=transaction.employer_id,
         trip_id=transaction.trip_id,
+        counterparty_id=None,
         notes=transaction.notes,
         version=1,
         review_status="current",
@@ -35,6 +36,7 @@ def meaning_snapshot(meaning: TransactionMeaning) -> dict[str, str | int | None]
         "person_id": meaning.person_id,
         "employer_id": meaning.employer_id,
         "trip_id": meaning.trip_id,
+        "counterparty_id": meaning.counterparty_id,
         "notes": meaning.notes,
     }
 
@@ -48,6 +50,7 @@ def apply_meaning_change(
     person_id: int | None,
     employer_id: int | None,
     trip_id: int | None,
+    counterparty_id: int | None,
     notes: str,
     expected_version: int | None = None,
     reason: str = "",
@@ -65,6 +68,7 @@ def apply_meaning_change(
         "person_id": person_id,
         "employer_id": employer_id,
         "trip_id": trip_id,
+        "counterparty_id": counterparty_id,
         "notes": notes,
     }
     if before == after:
@@ -92,6 +96,7 @@ def apply_meaning_change(
     meaning.person_id = person_id
     meaning.employer_id = employer_id
     meaning.trip_id = trip_id
+    meaning.counterparty_id = counterparty_id
     meaning.notes = notes
     meaning.version += 1
     if finalized:

@@ -69,10 +69,13 @@ def parse_table(rows: list[list[str]], bank_slug: str) -> ParsedStatement:
     if not transactions:
         raise ParseError("No transaction rows could be read from this statement.")
     transactions.sort(key=lambda transaction: transaction.txn_date)
+    first = transactions[0]
+    opening_balance = first.balance - first.amount if first.balance is not None else None
     return ParsedStatement(
         transactions=transactions,
         bank_slug=bank_slug,
         period_start=transactions[0].txn_date,
         period_end=transactions[-1].txn_date,
+        opening_balance=opening_balance,
         closing_balance=transactions[-1].balance,
     )
