@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from collections.abc import Iterator
 from datetime import date
 from decimal import Decimal
@@ -91,11 +92,24 @@ class TrustWorkspace:
         return self.client.post(f"/imports/{statement.id}/confirm", json={**body, **extra})
 
 
-@pytest.fixture
-def workspace() -> Iterator[TrustWorkspace]:
-    engine = create_engine(
+def _test_engine():
+    """SQLite by default; set UNIT_DATABASE_URL to run the same tests on PostgreSQL.
+
+    Use a database separate from the migration-test one: this fixture drops and recreates tables.
+    """
+    url = os.getenv("UNIT_DATABASE_URL")
+    if url:
+        engine = create_engine(url, pool_pre_ping=True)
+        Base.metadata.drop_all(engine)
+        return engine
+    return create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
+
+
+@pytest.fixture
+def workspace() -> Iterator[TrustWorkspace]:
+    engine = _test_engine()
     Base.metadata.create_all(engine)
     db = Session(engine, expire_on_commit=False)
     owner = User(email="owner@example.test", password_hash="unused", display_name="Owner")
@@ -112,6 +126,9 @@ def workspace() -> Iterator[TrustWorkspace]:
         yield TrustWorkspace(db, client, owner, stranger)
     app.dependency_overrides.clear()
     db.close()
+    if os.getenv("UNIT_DATABASE_URL"):
+        Base.metadata.drop_all(engine)
+    engine.dispose()
 
 
 class PrivacyProbe:
