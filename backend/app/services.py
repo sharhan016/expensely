@@ -43,13 +43,45 @@ def suggest_from_history(
     return None, "unresolved"
 
 
+MovementKey = tuple[date, str, str, str]
+
+
+def movement_key(
+    txn_date: date, amount: Decimal, description: str, reference: str = ""
+) -> MovementKey:
+    """Normalized identity of a bank movement within one account."""
+    normalized = _SPACE.sub(" ", description).strip().upper()
+    return (txn_date, f"{amount:.2f}", normalized, reference.strip().upper())
+
+
+def assign_ordinals(keys: list[MovementKey]) -> list[int]:
+    """Number identical movements 0, 1, 2... in the order they appear.
+
+    Two genuine rows can share date, amount, narration and reference. The ordinal keeps them
+    distinct without ever merging them; the first occurrence is always 0 so existing hashes match.
+    """
+    seen: dict[MovementKey, int] = {}
+    ordinals = []
+    for key in keys:
+        ordinals.append(seen.get(key, 0))
+        seen[key] = ordinals[-1] + 1
+    return ordinals
+
+
 def dedupe_hash(
-    account_id: int, txn_date: date, amount: Decimal, description: str, reference: str = ""
+    account_id: int,
+    txn_date: date,
+    amount: Decimal,
+    description: str,
+    reference: str = "",
+    ordinal: int = 0,
 ) -> str:
     normalized = _SPACE.sub(" ", description).strip().upper()
     identity = (
         f"{account_id}|{txn_date.isoformat()}|{amount:.2f}|{normalized}|{reference.strip().upper()}"
     )
+    if ordinal:
+        identity += f"|#{ordinal}"
     return hashlib.sha256(identity.encode()).hexdigest()
 
 

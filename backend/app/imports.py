@@ -1,4 +1,5 @@
 import uuid
+from collections import Counter
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -34,10 +35,17 @@ from app.schemas import (
     ImportRowResponse,
     ImportRowUpdate,
     PdfPasswordRequest,
+    PossiblyMissedRow,
     StatementImportResponse,
 )
 from app.security import current_user
-from app.services import calculate_reconciliation, dedupe_hash, suggest_from_history
+from app.services import (
+    assign_ordinals,
+    calculate_reconciliation,
+    dedupe_hash,
+    movement_key,
+    suggest_from_history,
+)
 from app.transfer_matching import match_card_payments, match_card_refunds
 
 router = APIRouter(prefix="/imports", tags=["statement imports"])
@@ -181,15 +189,33 @@ def _stage_parsed(db: Session, statement: StatementImport, parsed, user_id: int)
         for alias, counterparty in alias_rows
     }
     statement.rows.clear()
-    for transaction in parsed.transactions:
-        duplicate = db.scalar(
-            select(Transaction.id).where(
+    # A row is a proven re-import only when the same account already holds the same movement
+    # (date, amount, narration, reference). Identical rows are matched one-to-one by ordinal so a
+    # second genuine row is never absorbed by the first.
+    existing_by_key: dict[tuple, list[int]] = {}
+    if statement.account_id and parsed.transactions:
+        for existing in db.execute(
+            select(Transaction)
+            .where(
                 Transaction.user_id == user_id,
-                Transaction.txn_date == transaction.txn_date,
-                Transaction.amount == transaction.amount,
-                Transaction.description == transaction.description,
+                Transaction.account_id == statement.account_id,
+                Transaction.txn_date.in_({item.txn_date for item in parsed.transactions}),
             )
-        )
+            .order_by(Transaction.id)
+        ).scalars():
+            key = movement_key(
+                existing.txn_date, existing.amount, existing.description, existing.reference
+            )
+            existing_by_key.setdefault(key, []).append(existing.id)
+    parsed_keys = [
+        movement_key(item.txn_date, item.amount, item.description, item.reference)
+        for item in parsed.transactions
+    ]
+    for transaction, key, ordinal in zip(
+        parsed.transactions, parsed_keys, assign_ordinals(parsed_keys), strict=True
+    ):
+        matches = existing_by_key.get(key, [])
+        duplicate = matches[ordinal] if ordinal < len(matches) else None
         matched_rule = next(
             (
                 rule
@@ -368,6 +394,57 @@ def list_imports(db: Session = Depends(get_db), user: User = Depends(current_use
         .order_by(StatementImport.created_at.desc())
         .limit(100)
     ).all()
+
+
+@router.get("/possibly-missed-rows", response_model=list[PossiblyMissedRow])
+def possibly_missed_rows(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Read-only check of confirmed statements against the ledger; never re-imports anything."""
+    report = []
+    statements = db.scalars(
+        select(StatementImport)
+        .options(selectinload(StatementImport.rows))
+        .where(
+            StatementImport.user_id == user.id,
+            StatementImport.status == ImportStatus.CONFIRMED,
+            StatementImport.account_id.is_not(None),
+        )
+        .order_by(StatementImport.created_at, StatementImport.id)
+    ).all()
+    ledger_counts: dict[int, Counter] = {}
+    for statement in statements:
+        if statement.account_id not in ledger_counts:
+            ledger_counts[statement.account_id] = Counter(
+                movement_key(item.txn_date, item.amount, item.description, item.reference)
+                for item in db.scalars(
+                    select(Transaction).where(
+                        Transaction.user_id == user.id,
+                        Transaction.account_id == statement.account_id,
+                    )
+                )
+            )
+        groups: dict[tuple, list[ImportRow]] = {}
+        # Rows the user deselected on purpose are not expected; system-flagged duplicates are.
+        for row in sorted(statement.rows, key=lambda item: item.id):
+            if row.selected or row.duplicate_of_id is not None:
+                key = movement_key(row.txn_date, row.amount, row.description, row.reference)
+                groups.setdefault(key, []).append(row)
+        for key, rows in groups.items():
+            present = ledger_counts[statement.account_id][key]
+            if present < len(rows):
+                report.append(
+                    PossiblyMissedRow(
+                        import_id=statement.id,
+                        import_row_id=rows[present].id,
+                        txn_date=rows[0].txn_date,
+                        description=rows[0].description,
+                        amount=rows[0].amount,
+                        reference=rows[0].reference,
+                        expected_count=len(rows),
+                        present_count=present,
+                        missing_count=len(rows) - present,
+                    )
+                )
+    return report
 
 
 @router.get("/{import_id}", response_model=StatementImportResponse)
@@ -563,13 +640,31 @@ def confirm_import(
         statement.bank_slug = bank_slug
     imported = skipped = 0
     posted_movements = []
-    for row in statement.rows:
+    ordered_rows = sorted(statement.rows, key=lambda item: item.id)
+    row_ordinals = dict(
+        zip(
+            (item.id for item in ordered_rows),
+            assign_ordinals(
+                [
+                    movement_key(item.txn_date, item.amount, item.description, item.reference)
+                    for item in ordered_rows
+                ]
+            ),
+            strict=True,
+        )
+    )
+    for row in ordered_rows:
         if not row.selected:
             skipped += int(row.duplicate_of_id is not None)
             continue
         associations = row_associations[row.id]
         fingerprint = dedupe_hash(
-            account.id, row.txn_date, row.amount, row.description, row.reference
+            account.id,
+            row.txn_date,
+            row.amount,
+            row.description,
+            row.reference,
+            row_ordinals[row.id],
         )
         if db.scalar(
             select(Transaction.id).where(

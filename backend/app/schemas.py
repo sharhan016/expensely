@@ -210,6 +210,18 @@ class ImportConfirmResponse(BaseModel):
     linked_refunds: int = 0
 
 
+class PossiblyMissedRow(BaseModel):
+    import_id: UUID
+    import_row_id: int
+    txn_date: date
+    description: str
+    amount: Decimal
+    reference: str
+    expected_count: int
+    present_count: int
+    missing_count: int
+
+
 class PdfPasswordRequest(BaseModel):
     password: SecretStr
 
