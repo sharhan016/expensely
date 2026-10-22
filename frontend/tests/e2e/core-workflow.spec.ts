@@ -230,8 +230,9 @@ test("links a bank debit to its credit-card payment without double counting", as
   await expect(cardPayment).toContainText("YES BANK Uni RuPay Credit Card");
   await expect(cardPayment).toContainText("₹500");
   await expect(page.getByRole("heading", { name: "Card refunds & reversals" })).toBeVisible();
-  const refundLink = page.getByRole("article").filter({ hasText: "refund" });
+  const refundLink = page.locator(".refund-link-panel article").filter({ hasText: "refund" });
   await expect(refundLink).toContainText("₹750");
+  await expect(page.getByRole("button", { name: /Amazon Marketplace/ })).toBeVisible();
   if (process.env.CAPTURE_FLOW_UI === "1") {
     await page.screenshot({ path: "/private/tmp/card-link-desktop.png", fullPage: true });
     await page.setViewportSize({ width: 360, height: 800 });

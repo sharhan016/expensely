@@ -38,6 +38,20 @@ def test_upi_handle_is_a_stable_counterparty_identifier():
     assert first.confidence == "high"
 
 
+def test_card_merchant_token_ignores_channel_labels_and_changing_references():
+    first = extract_counterparty(
+        "CARD PURCHASE AMAZON MARKETPLACE Ref No: AB123 Shopping", "purchase"
+    )
+    second = extract_counterparty("ECOM AMAZON MARKETPLACE RRN 998877 Shopping", "purchase")
+
+    assert first is not None
+    assert second is not None
+    assert first.alias_type == "merchant_token"
+    assert first.alias_value == second.alias_value == "amazon marketplace"
+    assert first.display_name == "Amazon Marketplace"
+    assert extract_counterparty("PAYMENT RECEIVED Ref No: AB123", "card_payment") is None
+
+
 def test_repeated_upi_flow_groups_without_merging_and_learns_future_meaning():
     engine = create_engine(
         "sqlite://",
@@ -193,6 +207,73 @@ def test_repeated_upi_flow_groups_without_merging_and_learns_future_meaning():
                 )
                 == 10
             )
+
+            card_account = Account(
+                user_id=user.id,
+                name="YES credit card",
+                bank_slug="yes",
+                account_hint="XXXX2200",
+                instrument_type="credit_card",
+            )
+            card_batch = ImportBatch(user_id=user.id)
+            db.add_all([card_account, card_batch])
+            db.flush()
+            card_statement = StatementImport(
+                batch_id=card_batch.id,
+                user_id=user.id,
+                original_filename="yes-card.txt",
+                storage_key="test/yes-card.txt",
+                status=ImportStatus.PROCESSING,
+            )
+            db.add(card_statement)
+            db.flush()
+            _stage_parsed(
+                db,
+                card_statement,
+                ParsedStatement(
+                    transactions=[
+                        ParsedTransaction(
+                            txn_date=date(2026, 6, day),
+                            description=description,
+                            amount=Decimal("-125.00"),
+                            category="purchase",
+                            category_confidence="high",
+                        )
+                        for day, description in (
+                            (1, "CARD PURCHASE AMAZON MARKETPLACE Ref No: AB123 Shopping"),
+                            (2, "ECOM AMAZON MARKETPLACE RRN 998877 Shopping"),
+                        )
+                    ],
+                    bank_slug="yes",
+                    source_hint="XXXX2200",
+                    statement_kind="credit_card",
+                    instrument_confidence="high",
+                ),
+                user.id,
+            )
+            db.commit()
+            posted = client.post(
+                f"/imports/{card_statement.id}/confirm",
+                json={"account_id": card_account.id},
+            )
+            assert posted.status_code == 200
+            merchant_alias = db.scalar(
+                select(CounterpartyAlias).where(
+                    CounterpartyAlias.user_id == user.id,
+                    CounterpartyAlias.alias_type == "merchant_token",
+                    CounterpartyAlias.alias_value == "amazon marketplace",
+                )
+            )
+            assert merchant_alias is not None
+            assert (
+                db.scalar(
+                    select(func.count(TransactionMeaning.transaction_id)).where(
+                        TransactionMeaning.counterparty_id == merchant_alias.counterparty_id
+                    )
+                )
+                == 2
+            )
+            assert db.scalar(select(func.count(Transaction.id))) == 12
     finally:
         app.dependency_overrides.clear()
         db.close()
