@@ -5,6 +5,9 @@ export async function api<T>(path:string, init?:RequestInit):Promise<T>{
   return response.status===204?undefined as T:response.json();
 }
 
+// Money arrives from the backend as exact decimal strings; Intl formats the string as given
+// instead of converting it through a floating-point number.
 export function inr(value:number|string){
-  return new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:2}).format(Number(value));
+  const exact=typeof value==="string"?(value as `${number}`):value;
+  return new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",minimumFractionDigits:2,maximumFractionDigits:2}).format(exact);
 }

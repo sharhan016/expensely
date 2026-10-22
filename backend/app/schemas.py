@@ -43,6 +43,11 @@ class AccountResponse(ORMModel):
     opening_balance: Decimal
     current_balance: Decimal = Decimal("0")
     statement_count: int = 0
+    # current_balance is valid as of the newest confirmed statement, not as of today.
+    as_of: date | None = None
+    statement_end: date | None = None
+    age_days: int | None = None
+    is_stale: bool = True
 
 
 class AccountUpdate(BaseModel):
@@ -90,7 +95,16 @@ class TransactionResponse(ORMModel):
     decision_source: str = "unresolved"
     notes: str
     meaning_version: int = 1
+    running_balance: Decimal | None = None
     created_at: datetime
+
+
+class TransactionPage(BaseModel):
+    items: list[TransactionResponse]
+    total: int
+    showing: int
+    limit: int
+    offset: int
 
 
 class TransactionUpdate(BaseModel):

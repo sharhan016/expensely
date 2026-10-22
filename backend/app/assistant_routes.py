@@ -1,9 +1,11 @@
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.balances import account_balances, overall_context
 from app.database import get_db
 from app.models import (
     Account,
@@ -36,6 +38,13 @@ def _money(value: Decimal) -> str:
             head = head[:-2]
         whole = f"{','.join(reversed(groups))},{tail}"
     return f"{sign}₹{whole}.{fraction}"
+
+
+def _date_label(iso: str | None) -> str:
+    if not iso:
+        return ""
+    parsed = date.fromisoformat(iso)
+    return f"{parsed.day} {parsed.strftime('%b %Y')}"
 
 
 def _import_reply(statements: list[StatementImport]) -> tuple[str, dict]:
@@ -170,17 +179,12 @@ def _workspace_reply(db: Session, user_id: int, message: str) -> tuple[str, dict
         )
     if "card" in lowered:
         card_ids = {account.id for account in accounts if account.instrument_type == "credit_card"}
-        card_position = sum(
-            (account.opening_balance for account in accounts if account.id in card_ids),
-            Decimal("0"),
-        ) + sum(
-            (
-                transaction.amount
-                for transaction in transactions
-                if transaction.account_id in card_ids
-            ),
-            Decimal("0"),
-        )
+        card_balances = [
+            item for item in account_balances(db, user_id) if item.account_id in card_ids
+        ]
+        card_position = sum((item.balance for item in card_balances), Decimal("0"))
+        card_as_of = _date_label(overall_context(card_balances)["as_of"])
+        card_freshness = f" as of {card_as_of}" if card_as_of else " (no confirmed statement date)"
         linked = db.scalar(
             select(func.count(TransactionLink.id)).where(
                 TransactionLink.user_id == user_id,
@@ -206,7 +210,8 @@ def _workspace_reply(db: Session, user_id: int, message: str) -> tuple[str, dict
             for category in ("fee", "interest", "tax", "emi_interest")
         )
         return (
-            f"Your credit-card amount payable is {_money(max(-card_position, Decimal('0')))}. "
+            f"Your credit-card amount payable is {_money(max(-card_position, Decimal('0')))}"
+            f"{card_freshness}. "
             f"I have linked {linked or 0} card payment{'s' if linked != 1 else ''} to bank debits "
             f"and {linked_refunds or 0} refund{'s' if linked_refunds != 1 else ''} to purchases. "
             f"{charges} fee, interest, or tax charge{'s' if charges != 1 else ''} are identified "
@@ -249,20 +254,21 @@ def _workspace_reply(db: Session, user_id: int, message: str) -> tuple[str, dict
         }
     if any(term in lowered for term in ("summary", "balance", "overview", "money")):
         bank_ids = {account.id for account in accounts if account.instrument_type != "credit_card"}
-        bank_balance = sum(
-            (account.opening_balance for account in accounts if account.id in bank_ids),
-            Decimal("0"),
-        ) + sum(
-            (
-                transaction.amount
-                for transaction in transactions
-                if transaction.account_id in bank_ids
-            ),
-            Decimal("0"),
+        balances = [item for item in account_balances(db, user_id) if item.account_id in bank_ids]
+        bank_balance = sum((item.balance for item in balances), Decimal("0"))
+        context = overall_context(balances)
+        as_of = _date_label(context["as_of"])
+        freshness = (
+            f" as of {as_of}, from the statement{'s' if len(balances) != 1 else ''} ending then"
+            if as_of
+            else " (no confirmed statement date, so I cannot say how current this is)"
         )
+        if context["is_stale"] and as_of:
+            freshness += "; it may be out of date"
         unresolved = sum(transaction.purpose == Purpose.OTHER for transaction in transactions)
         return (
-            f"Your bank-ledger balance is {_money(bank_balance)} across {len(bank_ids)} account"
+            f"Your bank-ledger balance is {_money(bank_balance)}{freshness}, across "
+            f"{len(bank_ids)} account"
             f"{'s' if len(bank_ids) != 1 else ''}. {unresolved} movement"
             f"{'s' if unresolved != 1 else ''} still need review.",
             {"kind": "workspace_summary", "unresolved_count": unresolved},

@@ -1,4 +1,6 @@
-from fastapi import Depends, FastAPI, HTTPException, Response
+from datetime import date
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -6,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.action_routes import router as action_router
 from app.assistant_routes import router as assistant_router
+from app.balances import account_balances, ledger_running_balances
 from app.config import settings
 from app.counterparty_routes import router as counterparty_router
 from app.database import get_db
@@ -35,6 +38,7 @@ from app.schemas import (
     RegisterRequest,
     ThemeUpdate,
     TransactionMeaningChangeResponse,
+    TransactionPage,
     TransactionResponse,
     TransactionUpdate,
     UserResponse,
@@ -138,27 +142,29 @@ def update_theme(
     return user
 
 
+def _account_response(account: Account, db: Session, user_id: int) -> AccountResponse:
+    balance = next(item for item in account_balances(db, user_id) if item.account_id == account.id)
+    statement_count = db.scalar(
+        select(func.count(func.distinct(Transaction.statement_import_id))).where(
+            Transaction.account_id == account.id
+        )
+    )
+    return AccountResponse.model_validate(account).model_copy(
+        update={
+            "current_balance": balance.balance,
+            "statement_count": statement_count or 0,
+            "as_of": balance.as_of,
+            "statement_end": balance.statement_end,
+            "age_days": balance.age_days,
+            "is_stale": balance.is_stale,
+        }
+    )
+
+
 @app.get("/accounts", response_model=list[AccountResponse])
 def accounts(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    rows = db.execute(
-        select(
-            Account,
-            (Account.opening_balance + func.coalesce(func.sum(Transaction.amount), 0)).label(
-                "current_balance"
-            ),
-            func.count(func.distinct(Transaction.statement_import_id)).label("statement_count"),
-        )
-        .outerjoin(Transaction, Transaction.account_id == Account.id)
-        .where(Account.user_id == user.id)
-        .group_by(Account.id)
-        .order_by(Account.name)
-    ).all()
-    return [
-        AccountResponse.model_validate(account).model_copy(
-            update={"current_balance": balance, "statement_count": statement_count}
-        )
-        for account, balance, statement_count in rows
-    ]
+    rows = db.scalars(select(Account).where(Account.user_id == user.id).order_by(Account.name))
+    return [_account_response(account, db, user.id) for account in rows]
 
 
 @app.patch("/accounts/{account_id}", response_model=AccountResponse)
@@ -188,30 +194,43 @@ def update_account(
         raise HTTPException(
             status_code=409, detail="An account with this bank and identity already exists"
         ) from exc
-    balance, statement_count = db.execute(
-        select(
-            (Account.opening_balance + func.coalesce(func.sum(Transaction.amount), 0)),
-            func.count(func.distinct(Transaction.statement_import_id)),
-        )
-        .outerjoin(Transaction, Transaction.account_id == Account.id)
-        .where(Account.id == account.id)
-        .group_by(Account.id)
-    ).one()
-    return AccountResponse.model_validate(account).model_copy(
-        update={"current_balance": balance, "statement_count": statement_count}
-    )
+    return _account_response(account, db, user.id)
 
 
-@app.get("/transactions", response_model=list[TransactionResponse])
-def transactions(db: Session = Depends(get_db), user: User = Depends(current_user)):
+@app.get("/transactions", response_model=TransactionPage)
+def transactions(
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    account_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    filters = [Transaction.user_id == user.id]
+    if date_from:
+        filters.append(Transaction.txn_date >= date_from)
+    if date_to:
+        filters.append(Transaction.txn_date <= date_to)
+    if account_id is not None:
+        filters.append(Transaction.account_id == account_id)
+    total = db.scalar(select(func.count(Transaction.id)).where(*filters)) or 0
     rows = db.scalars(
         select(Transaction)
         .options(selectinload(Transaction.meaning).selectinload(TransactionMeaning.counterparty))
-        .where(Transaction.user_id == user.id)
+        .where(*filters)
         .order_by(Transaction.txn_date.desc(), Transaction.id.desc())
-        .limit(500)
+        .limit(limit)
+        .offset(offset)
     ).all()
-    return [_transaction_response(transaction) for transaction in rows]
+    balances = ledger_running_balances(db, user.id, {row.id for row in rows})
+    items = [
+        _transaction_response(transaction).model_copy(
+            update={"running_balance": balances.get(transaction.id)}
+        )
+        for transaction in rows
+    ]
+    return TransactionPage(items=items, total=total, showing=len(items), limit=limit, offset=offset)
 
 
 @app.patch("/transactions/{transaction_id}", response_model=TransactionResponse)

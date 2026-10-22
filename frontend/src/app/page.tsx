@@ -5,15 +5,16 @@ import { Landmark, WalletCards, HandCoins, CircleAlert, ArrowUpRight, Minus, Equ
 import { AppShell } from "@/components/AppShell";
 import Link from "next/link";
 import { api, inr } from "@/lib/api";
+import { asOfLabel } from "@/lib/ledger";
 import { WorkspaceState } from "@/components/WorkspaceState";
 
 export default function Home() {
   const [accent, setAccent] = useState(() =>
     typeof window === "undefined" ? "cobalt" : localStorage.getItem("expense-accent") ?? "cobalt",
   );
-  const [summary,setSummary]=useState({bank_balance:0,credit_card_balance:0,entrusted_balance:0,available_balance:0,company_receivable:0,loan_balance:0,unresolved_count:0,account_count:0,credit_card_count:0});
+  const [summary,setSummary]=useState({bank_balance:"0.00",credit_card_balance:"0.00",entrusted_balance:"0.00",available_balance:"0.00",company_receivable:"0.00",loan_balance:"0.00",unresolved_count:0,account_count:0,credit_card_count:0,as_of:null as string|null,is_stale:true,age_days:null as number|null});
   const [activity,setActivity]=useState<{id:number;txn_date:string;description:string;account_id:number;amount:string;purpose:string}[]>([]),[accounts,setAccounts]=useState<Record<number,string>>({}),[name,setName]=useState(""),[loading,setLoading]=useState(true),[error,setError]=useState("");
-  useEffect(()=>{Promise.all([api<typeof summary>("/dashboard"),api<typeof activity>("/transactions"),api<{id:number;name:string}[]>("/accounts"),api<{display_name:string}>("/auth/me")]).then(([s,t,a,u])=>{setSummary(s);setActivity(t.slice(0,6));setAccounts(Object.fromEntries(a.map(item=>[item.id,item.name])));setName(u.display_name.split(" ")[0])}).catch(reason=>setError(reason instanceof Error?reason.message:"Unable to load the dashboard")).finally(()=>setLoading(false))},[]);
+  useEffect(()=>{Promise.all([api<typeof summary>("/dashboard"),api<{items:typeof activity}>("/transactions?limit=6"),api<{id:number;name:string}[]>("/accounts"),api<{display_name:string}>("/auth/me")]).then(([s,t,a,u])=>{setSummary(s);setActivity(t.items);setAccounts(Object.fromEntries(a.map(item=>[item.id,item.name])));setName(u.display_name.split(" ")[0])}).catch(reason=>setError(reason instanceof Error?reason.message:"Unable to load the dashboard")).finally(()=>setLoading(false))},[]);
   return (
     <AppShell accent={accent} onAccent={setAccent} active="Home">
       <header className="page-head">
@@ -22,7 +23,7 @@ export default function Home() {
       </header>
 
       <WorkspaceState loading={loading} error={error}/>
-      {!loading&&!error&&<><section className="fund-equation" aria-label="Available funds calculation">
+      {!loading&&!error&&<><p className={summary.is_stale?"balance-context stale":"balance-context"} role="status">{asOfLabel(summary)}</p><section className="fund-equation" aria-label="Available funds calculation">
         <Metric icon={<Landmark/>} label="Total bank balance" value={inr(summary.bank_balance)} detail={`Across ${summary.account_count} accounts`} />
         <Minus className="operator"/>
         <Metric icon={<HandCoins/>} label="Entrusted funds" value={inr(summary.entrusted_balance)} detail="Belongs to other people" tone="ochre"/>

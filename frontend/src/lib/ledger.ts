@@ -1,13 +1,23 @@
-export type BalanceAccount={id:number;opening_balance:string|number};
-export type BalanceTransaction={id:number;account_id:number;amount:string|number};
+// Display helpers only. Every balance is computed by the backend as an exact decimal string;
+// nothing here adds, subtracts or otherwise does arithmetic on money.
 
-export function runningBalances(accounts:BalanceAccount[],transactions:BalanceTransaction[]){
-  const totals:Record<number,number>={};
-  accounts.forEach(account=>{totals[account.id]=Number(account.opening_balance)});
-  const result:Record<number,number>={};
-  [...transactions].reverse().forEach(transaction=>{
-    totals[transaction.account_id]=(totals[transaction.account_id]??0)+Number(transaction.amount);
-    result[transaction.id]=totals[transaction.account_id];
-  });
-  return result;
+export type BalanceContext={as_of:string|null;is_stale:boolean;age_days:number|null};
+
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+export function dateLabel(iso:string){
+  const [year,month,day]=iso.split("-").map(Number);
+  return `${day} ${MONTHS[month-1]} ${year}`;
+}
+
+export function asOfLabel(context:BalanceContext){
+  if(!context.as_of)return "No confirmed statement date, so these figures may not be current";
+  const base=`As of ${dateLabel(context.as_of)}, from the statement ending that day`;
+  if(!context.is_stale)return base;
+  const age=context.age_days===null?"":` (${context.age_days} days ago)`;
+  return `${base}${age}. This is not today's balance; upload newer statements to update it`;
+}
+
+export function showingLabel(showing:number,total:number){
+  return showing>=total?`Showing all ${total}`:`Showing ${showing} of ${total}`;
 }

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.balances import account_balances, balance_to_json, money, overall_context
 from app.database import get_db
 from app.meanings import apply_meaning_change, ensure_meaning
 from app.models import (
@@ -37,29 +38,11 @@ router = APIRouter(tags=["financial workspace"])
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
     transactions = db.scalars(select(Transaction).where(Transaction.user_id == user.id)).all()
-    accounts = db.scalars(select(Account).where(Account.user_id == user.id)).all()
-    bank_accounts = [account for account in accounts if account.instrument_type != "credit_card"]
-    credit_accounts = [account for account in accounts if account.instrument_type == "credit_card"]
-    bank_account_ids = {account.id for account in bank_accounts}
-    credit_account_ids = {account.id for account in credit_accounts}
-    bank = sum((account.opening_balance for account in bank_accounts), Decimal("0")) + sum(
-        (
-            transaction.amount
-            for transaction in transactions
-            if transaction.account_id in bank_account_ids
-        ),
-        Decimal("0"),
-    )
-    credit_position = sum(
-        (account.opening_balance for account in credit_accounts), Decimal("0")
-    ) + sum(
-        (
-            transaction.amount
-            for transaction in transactions
-            if transaction.account_id in credit_account_ids
-        ),
-        Decimal("0"),
-    )
+    balances = account_balances(db, user.id)
+    bank_balances = [item for item in balances if item.instrument_type != "credit_card"]
+    credit_balances = [item for item in balances if item.instrument_type == "credit_card"]
+    bank = sum((item.balance for item in bank_balances), Decimal("0"))
+    credit_position = sum((item.balance for item in credit_balances), Decimal("0"))
     credit_card_balance = max(-credit_position, Decimal("0"))
     entrusted = sum(
         (t.amount for t in transactions if t.purpose == Purpose.ENTRUSTED), Decimal("0")
@@ -73,15 +56,19 @@ def dashboard(db: Session = Depends(get_db), user: User = Depends(current_user))
         (t.amount for t in transactions if t.purpose == Purpose.LOAN_REPAYMENT), Decimal("0")
     )
     return {
-        "bank_balance": bank,
-        "credit_card_balance": credit_card_balance,
-        "entrusted_balance": entrusted,
-        "available_balance": bank - entrusted,
-        "company_receivable": max(spent - reimbursed, Decimal("0")),
-        "loan_balance": loans,
+        # Money is returned as exact decimal strings. Every figure is valid as of `as_of` (the
+        # earliest newest-statement date across accounts), not as of today.
+        "bank_balance": money(bank),
+        "credit_card_balance": money(credit_card_balance),
+        "entrusted_balance": money(entrusted),
+        "available_balance": money(bank - entrusted),
+        "company_receivable": money(max(spent - reimbursed, Decimal("0"))),
+        "loan_balance": money(loans),
         "unresolved_count": sum(t.purpose == Purpose.OTHER for t in transactions),
-        "account_count": len(bank_accounts),
-        "credit_card_count": len(credit_accounts),
+        "account_count": len(bank_balances),
+        "credit_card_count": len(credit_balances),
+        **overall_context(balances),
+        "accounts": [balance_to_json(item) for item in balances],
     }
 
 
