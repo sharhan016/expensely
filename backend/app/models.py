@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -95,6 +96,11 @@ class Account(TimestampMixin, Base):
     )
     currency: Mapped[str] = mapped_column(String(3), default="INR")
     opening_balance: Mapped[Decimal] = mapped_column(Numeric(16, 2), default=0)
+    # Coverage settings: whether the account counts toward the overall line, and where the
+    # chain of reconciled statements begins (optionally with an opening balance she confirmed).
+    in_scope: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    records_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    records_opening_balance: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     user: Mapped[User] = relationship(back_populates="accounts")
     transactions: Mapped[list[Transaction]] = relationship(back_populates="account")
 
@@ -430,6 +436,14 @@ class Reconciliation(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default="draft")
     finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     classification_status: Mapped[str] = mapped_column(String(20), default="current")
+    # NULL on rows from before coverage existed: unverified until recomputed.
+    source_statement_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("statement_imports.id", ondelete="SET NULL"), nullable=True
+    )
+    movement_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    computed_difference: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invalidation_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
 
 class ClassificationRule(TimestampMixin, Base):
@@ -444,3 +458,44 @@ class ClassificationRule(TimestampMixin, Base):
     min_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     max_amount: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class CoverageGapUnbridge(Base):
+    """A gap whose balances connect but that she chose not to treat as bridged."""
+
+    __tablename__ = "coverage_gap_unbridges"
+    __table_args__ = (UniqueConstraint("account_id", "gap_start", "gap_end"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
+    )
+    gap_start: Mapped[date] = mapped_column(Date)
+    gap_end: Mapped[date] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class CashWithdrawalMarker(TimestampMixin, Base):
+    """Reversible marker that a bank debit put cash in hand. The movement itself never changes."""
+
+    __tablename__ = "cash_withdrawal_markers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("transactions.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    # False records that she unmarked it, so the narration rule never marks it again.
+    is_cash_withdrawal: Mapped[bool] = mapped_column(Boolean, default=True)
+    source: Mapped[str] = mapped_column(String(16), default="rule")  # rule | user
+
+
+class CashStatementEntry(Base):
+    """Cash she says she spent. Her own statement; there is no bank statement behind it."""
+
+    __tablename__ = "cash_statement_entries"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    entry_date: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(16, 2))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
