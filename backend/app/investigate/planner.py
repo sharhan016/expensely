@@ -29,6 +29,7 @@ TOOL_LABELS = {
 }
 _LINK_WORDS = {
     "own_transfer": "own transfer",
+    "pass_through": "pass-through",
     "card_payment": "card payment",
     "refund": "refund",
     "reversal": "reversal",

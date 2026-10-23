@@ -90,6 +90,7 @@ def _view(db: Session, user_id: int) -> dict:
         "questions": motion.pending_questions(db, user_id),
         "outstanding": motion.outstanding(db, user_id),
         "return_proposals": motion.return_proposals(db, user_id),
+        "pass_through_proposals": motion.pass_through_candidates(db, user_id),
         "transfer_proposals": [
             item for item in motion.own_transfer_candidates(db, user_id) if not item["strong"]
         ],
@@ -177,6 +178,74 @@ def set_status(
     except motion.AllocationError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _view(db, user.id)
+
+
+def _pass_through_pair(db: Session, user_id: int, body: TransferBody):
+    out = _transaction(db, body.outflow_id, user_id)
+    inn = _transaction(db, body.inflow_id, user_id)
+    if out.amount >= 0 or inn.amount <= 0 or abs(out.amount) != inn.amount:
+        raise HTTPException(status_code=409, detail="These two movements are not a pass-through")
+    if out.account_id != inn.account_id:
+        raise HTTPException(status_code=409, detail="A pass-through stays in one account")
+    link = db.scalar(
+        select(TransactionLink).where(
+            TransactionLink.user_id == user_id,
+            TransactionLink.outflow_transaction_id == out.id,
+            TransactionLink.inflow_transaction_id == inn.id,
+        )
+    )
+    if link is not None and link.link_type != "pass_through":
+        raise HTTPException(status_code=409, detail="These movements are already linked")
+    return out, inn, link
+
+
+@router.post("/pass-through")
+def confirm_pass_through(
+    body: TransferBody, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
+    out, inn, link = _pass_through_pair(db, user.id, body)
+    if link is None:
+        db.add(
+            TransactionLink(
+                user_id=user.id,
+                link_type="pass_through",
+                outflow_transaction_id=out.id,
+                inflow_transaction_id=inn.id,
+                status="confirmed",
+                confidence="high",
+                decision_source="user_confirmed",
+                evidence={"basis": "you said this money only passed through"},
+            )
+        )
+    elif link.status != "confirmed":
+        link.status, link.decision_source = "confirmed", "user_confirmed"
+    db.commit()
+    return _view(db, user.id)
+
+
+@router.post("/pass-through/reject")
+def reject_pass_through(
+    body: TransferBody, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
+    """Says "this was not a pass-through"; also undoes an earlier confirmation."""
+    out, inn, link = _pass_through_pair(db, user.id, body)
+    if link is None:
+        db.add(
+            TransactionLink(
+                user_id=user.id,
+                link_type="pass_through",
+                outflow_transaction_id=out.id,
+                inflow_transaction_id=inn.id,
+                status="rejected",
+                confidence="high",
+                decision_source="user_rejected",
+                evidence={"basis": "you said this was not a pass-through"},
+            )
+        )
+    else:
+        link.status, link.decision_source = "rejected", "user_rejected"
+    db.commit()
     return _view(db, user.id)
 
 

@@ -29,6 +29,7 @@ from app.money_in_motion import allocated_ids
 
 MAX_SPAN_DAYS = 366
 NEUTRAL_LINKS = ("card_payment", "refund", "reversal", "own_transfer")
+PASS_THROUGH_LINK = "pass_through"
 OBLIGATION_PURPOSES = {
     Purpose.LOAN_GIVEN,
     Purpose.LOAN_REPAYMENT,
@@ -40,6 +41,7 @@ BUCKETS = (
     "income",
     "refunds",
     "own_places",
+    "passing_through",
     "cash_withdrawal",
     "in_motion",
     "returns",
@@ -52,6 +54,7 @@ BUCKET_LABELS = {
     "income": "Marked as income",
     "refunds": "Refunds",
     "own_places": "Moving between your own places",
+    "passing_through": "Passed through your account",
     "cash_withdrawal": "Withdrawn as cash",
     "in_motion": "Sent out, expected back",
     "returns": "Returned to you",
@@ -93,9 +96,12 @@ def classify(
     in_motion: set[int] = frozenset(),
     returned: set[int] = frozenset(),
     written_off: set[int] = frozenset(),
+    passing: set[int] = frozenset(),
 ) -> str:
     if transaction.id in cash:
         return "cash_withdrawal"
+    if transaction.id in passing:
+        return "passing_through"  # she said it only came in and went straight out
     if transaction.id in linked or purpose == Purpose.TRANSFER:
         return "own_places"
     if transaction.id in in_motion:
@@ -131,6 +137,15 @@ def period_rows(db: Session, user_id: int, start: date, end: date) -> list[dict]
         )
     ):
         linked.update((link.outflow_transaction_id, link.inflow_transaction_id))
+    passing: set[int] = set()
+    for link in db.scalars(
+        select(TransactionLink).where(
+            TransactionLink.user_id == user_id,
+            TransactionLink.status == "confirmed",
+            TransactionLink.link_type == PASS_THROUGH_LINK,
+        )
+    ):
+        passing.update((link.outflow_transaction_id, link.inflow_transaction_id))
     cash = neutral_movement_ids(db, user_id)
     in_motion = allocated_ids(db, user_id, "out", ("tracking",))
     written_off = allocated_ids(db, user_id, "out", ("written_off",))
@@ -152,7 +167,7 @@ def period_rows(db: Session, user_id: int, start: date, end: date) -> list[dict]
                 "description": transaction.description,
                 "amount": transaction.amount,
                 "bucket": classify(
-                    transaction, purpose, linked, cash, in_motion, returned, written_off
+                    transaction, purpose, linked, cash, in_motion, returned, written_off, passing
                 ),
                 "counterparty_id": counterparty.id if counterparty else None,
                 "counterparty_name": counterparty.display_name if counterparty else "",
@@ -233,7 +248,11 @@ def build_report(db: Session, user_id: int, start: date, end: date) -> dict:
         day = days.setdefault(row["txn_date"], {"count": 0, "out": Decimal(0), "in": Decimal(0)})
         day["count"] += 1
         day["out" if amount < 0 else "in"] += abs(amount)
-        counts_as_activity = row["bucket"] not in ("own_places", "cash_withdrawal")
+        counts_as_activity = row["bucket"] not in (
+            "own_places",
+            "passing_through",
+            "cash_withdrawal",
+        )
         if counts_as_activity and amount > 0:
             incoming += 1
         if counts_as_activity and amount < 0 and row["counterparty_id"]:

@@ -31,8 +31,9 @@ from app.models import (
 )
 from app.services import person_balances
 
-NEUTRAL_LINK_TYPES = ("card_payment", "refund", "reversal", "own_transfer")
+NEUTRAL_LINK_TYPES = ("card_payment", "refund", "reversal", "own_transfer", "pass_through")
 TRANSFER_WINDOW_DAYS = 3
+PASS_THROUGH_WINDOW_DAYS = 1
 
 
 class AllocationError(Exception):
@@ -644,6 +645,61 @@ def own_transfer_candidates(db: Session, user_id: int) -> list[dict]:
             }
         )
     return result
+
+
+def pass_through_candidates(db: Session, user_id: int) -> list[dict]:
+    """Money that came into an account and left it again, same amount, within a day.
+
+    Only a proposal: the records show the movement, not whose money it was. Nothing is linked
+    until she confirms, and a pair is offered only when it is the single match on both sides.
+    """
+    skip = _linked_ids(db, user_id) | neutral_movement_ids(db, user_id)
+    skip |= allocated_ids(db, user_id, "out", ("tracking", "written_off"))
+    rejected = {
+        (link.outflow_transaction_id, link.inflow_transaction_id)
+        for link in db.scalars(
+            select(TransactionLink).where(
+                TransactionLink.user_id == user_id,
+                TransactionLink.link_type == "pass_through",
+                TransactionLink.status == "rejected",
+            )
+        )
+    }
+    rows = [r for r in db.scalars(_bank_transactions(db, user_id)) if r.id not in skip]
+    outs = [r for r in rows if r.amount < 0]
+    ins = [r for r in rows if r.amount > 0]
+    pairs = [
+        (out, inn)
+        for out, inn in itertools.product(outs, ins)
+        if out.account_id == inn.account_id
+        and abs(out.amount) == inn.amount
+        and abs((out.txn_date - inn.txn_date).days) <= PASS_THROUGH_WINDOW_DAYS
+        and (out.txn_date >= inn.txn_date)
+        and (out.id, inn.id) not in rejected
+    ]
+    result = []
+    for out, inn in pairs:
+        if sum(1 for o, _ in pairs if o.id == out.id) != 1:
+            continue
+        if sum(1 for _, i in pairs if i.id == inn.id) != 1:
+            continue
+        result.append(
+            {
+                "outflow_id": out.id,
+                "inflow_id": inn.id,
+                "amount": money(inn.amount),
+                "in_date": inn.txn_date.isoformat(),
+                "out_date": out.txn_date.isoformat(),
+                "from_name": inn.meaning.counterparty.display_name
+                if inn.meaning and inn.meaning.counterparty
+                else "",
+                "to_name": out.meaning.counterparty.display_name
+                if out.meaning and out.meaning.counterparty
+                else "",
+                "evidence": [f"txn:{inn.id}", f"txn:{out.id}"],
+            }
+        )
+    return sorted(result, key=lambda item: -Decimal(item["amount"]))
 
 
 def sync_own_transfers(db: Session, user_id: int) -> int:

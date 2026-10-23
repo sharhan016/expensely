@@ -10,7 +10,8 @@ type Remembered = { id: number; counterparty_name: string; choice: string; appli
 type LoanProposal = { person_id: number; person_name: string; loans: { count: number; total: string }; repayments: { count: number; total: string }; loan_balance_now: string; would_track: { sent: string; returned: string } };
 type ReturnProposal = { expectation_id: number; transaction_id: number; counterparty_name: string; date: string; amount: string; remaining: string };
 type TransferProposal = { outflow_id: number; inflow_id: number; amount: string; out_date: string; in_date: string };
-type Motion = { remembered: Remembered[]; loan_proposals: LoanProposal[]; questions: Question[]; outstanding: Outstanding[]; return_proposals: ReturnProposal[]; transfer_proposals: TransferProposal[] };
+type PassThrough = { outflow_id: number; inflow_id: number; amount: string; in_date: string; out_date: string; from_name: string; to_name: string };
+type Motion = { pass_through_proposals?: PassThrough[]; remembered: Remembered[]; loan_proposals: LoanProposal[]; questions: Question[]; outstanding: Outstanding[]; return_proposals: ReturnProposal[]; transfer_proposals: TransferProposal[] };
 
 // Money she sent out. Nothing is assumed: each person is asked about once, and only her answer
 // changes how the payments are counted.
@@ -37,11 +38,24 @@ export function MotionPanel({ refreshKey }: { refreshKey: number }) {
   const questions = queue.slice(0, 1); // one person at a time, biggest first
   const proposals = state.return_proposals.filter(item => !later.has(`r${item.transaction_id}`));
   const loans = state.loan_proposals.filter(item => !later.has(`l${item.person_id}`));
+  const passing = (state.pass_through_proposals ?? []).filter(item => !later.has(`p${item.outflow_id}`)).slice(0, 1); // largest first, one at a time
+  const passingTotal = (state.pass_through_proposals ?? []).filter(item => !later.has(`p${item.outflow_id}`)).length;
   const transfers = state.transfer_proposals.filter(item => !later.has(`t${item.outflow_id}`));
-  if (!questions.length && !proposals.length && !transfers.length && !loans.length && !state.outstanding.length && !state.remembered.length) return null;
+  if (!questions.length && !passing.length && !proposals.length && !transfers.length && !loans.length && !state.outstanding.length && !state.remembered.length) return null;
 
   return (
     <section className="workflow-panel motion-panel" aria-label="Money you sent out">
+      {passing.map(item => (
+        <div className="workflow-question" role="group" aria-label="Money that may have passed through your account" key={item.outflow_id}>
+          <strong>{inr(item.amount)} came in{item.from_name ? ` from ${item.from_name}` : ""} on {dateLabel(item.in_date)} and {inr(item.amount)} went out{item.to_name ? ` to ${item.to_name}` : ""} {item.in_date === item.out_date ? "the same day" : `on ${dateLabel(item.out_date)}`}. Did the money just pass through your account?</strong>
+          <small>I cannot tell whose money it was from the statement. If you say yes, I will leave both out of your spending and income.{passingTotal > 1 ? ` ${passingTotal - 1} more like this after this one.` : ""}</small>
+          <div className="workflow-actions">
+            <button className="primary" disabled={busy} onClick={() => post("/motion/pass-through", { outflow_id: item.outflow_id, inflow_id: item.inflow_id })}>Yes, it passed through</button>
+            <button className="secondary" disabled={busy} onClick={() => post("/motion/pass-through/reject", { outflow_id: item.outflow_id, inflow_id: item.inflow_id })}>No, they are unrelated</button>
+            <button className="text-button" onClick={() => hide(`p${item.outflow_id}`)}>Ask me later</button>
+          </div>
+        </div>
+      ))}
       {questions.map(item => (
         <div className="workflow-question" role="group" aria-label={`Question about ${item.counterparty_name}`} key={item.counterparty_id}>
           <strong>{item.remembered === "expected_back" ? `You usually expect money from ${item.counterparty_name} back. Track ` : "You sent "}{item.count} payment{item.count === 1 ? "" : "s"} totalling {inr(item.total)}{item.remembered === "expected_back" ? " as expected back?" : ` to ${item.counterparty_name} (${dateLabel(item.first_date)}${item.first_date === item.last_date ? "" : ` to ${dateLabel(item.last_date)}`}). Do you expect it back?`}</strong>
