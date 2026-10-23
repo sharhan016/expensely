@@ -1,11 +1,12 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bot, FileText, Paperclip, Send, Sparkles, X } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MotionPanel } from "@/components/MotionPanel";
 import { InvestigationCard } from "@/components/InvestigationCard";
+import { AssistantText } from "@/components/AssistantText";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
 
 type MessageContext = {
@@ -43,9 +44,19 @@ export default function AssistantPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [panelKey, setPanelKey] = useState(0);
+  const [turn, setTurn] = useState(0);
   const [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const feed = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
+
+  // One line by default; grows with the draft up to the CSS max-height.
+  useEffect(() => {
+    const field = composer.current;
+    if (!field) return;
+    field.style.height = "";
+    if (field.scrollHeight > field.clientHeight) field.style.height = `${field.scrollHeight}px`;
+  }, [message]);
 
   useEffect(() => {
     fetch("/api/assistant/messages")
@@ -61,6 +72,20 @@ export default function AssistantPage() {
   useEffect(() => {
     if (feed.current) feed.current.scrollTop = feed.current.scrollHeight;
   }, [messages, busy]);
+
+  // Questions and notes load on their own; while the reader is at the bottom, keep the newest
+  // turn in view as it appears. Someone reading further up is never pulled down.
+  // A callback ref, because the feed mounts only after the shell has checked the session.
+  const feedObserver = useRef<MutationObserver | null>(null);
+  const attachFeed = useCallback((element: HTMLDivElement | null) => {
+    feedObserver.current?.disconnect();
+    feed.current = element;
+    if (!element) return;
+    let pinned = true;
+    element.addEventListener("scroll", () => { pinned = element.scrollHeight - element.scrollTop - element.clientHeight < 80; });
+    feedObserver.current = new MutationObserver(() => { if (pinned) element.scrollTop = element.scrollHeight; });
+    feedObserver.current.observe(element, { childList: true, subtree: true, characterData: true });
+  }, []);
 
   function chooseFiles(event: ChangeEvent<HTMLInputElement>) {
     setFiles(Array.from(event.target.files ?? []).slice(0, 20));
@@ -107,6 +132,7 @@ export default function AssistantPage() {
         created_at: new Date().toISOString(),
       };
       setMessages((current) => [...current, userMessage, assistantMessage]);
+      setTurn((current) => current + 1);
       setMessage("");
       setFiles([]);
     } catch (reason) {
@@ -131,9 +157,7 @@ export default function AssistantPage() {
           <span className="assistant-local"><i /> Local analysis</span>
         </header>
 
-        <div ref={feed} className="assistant-feed" aria-live="polite" aria-busy={loading || busy}>
-          <WorkflowPanel refreshKey={panelKey} onDone={() => { fetch("/api/assistant/messages").then(r => (r.ok ? r.json() : null)).then(items => { if (items) setMessages(items); }).catch(() => undefined); setPanelKey(key => key + 1); }} />
-          <MotionPanel refreshKey={panelKey} />
+        <div ref={attachFeed} className="assistant-feed" aria-live="polite" aria-busy={loading || busy}>
           {loading && <p className="assistant-status">Opening your private conversation…</p>}
           {!loading && messages.length === 0 && (
             <div className="assistant-welcome">
@@ -156,7 +180,7 @@ export default function AssistantPage() {
             <article className={`assistant-message ${item.role}`} key={item.id}>
               <span>{item.role === "assistant" ? <Bot aria-hidden="true" /> : "You"}</span>
               <div>
-                {item.role === "assistant" && item.context.kind === "investigation" ? <InvestigationCard context={item.context as never} /> : <p>{item.content}</p>}
+                {item.role === "assistant" && item.context.kind === "investigation" ? <InvestigationCard context={item.context as never} /> : item.role === "assistant" ? <AssistantText content={item.content} /> : <p>{item.content}</p>}
                 {item.role === "assistant" && item.context.review_required && (
                   <Link className="assistant-action" href="/imports">
                     Review statement <ArrowRight aria-hidden="true" />
@@ -165,6 +189,9 @@ export default function AssistantPage() {
               </div>
             </article>
           ))}
+          {/* What the assistant is waiting on comes after the conversation, as its latest turn. */}
+          <WorkflowPanel refreshKey={panelKey} turn={turn} onDone={() => { fetch("/api/assistant/messages").then(r => (r.ok ? r.json() : null)).then(items => { if (items) setMessages(items); }).catch(() => undefined); setPanelKey(key => key + 1); }} />
+          <MotionPanel refreshKey={panelKey} />
           {busy && (
             <div className="assistant-thinking">
               <Bot aria-hidden="true" />
@@ -204,11 +231,12 @@ export default function AssistantPage() {
               Message your financial assistant
             </label>
             <textarea
+              ref={composer}
               id="assistant-message"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               placeholder="Ask about your money, or attach a statement…"
-              rows={2}
+              rows={1}
               disabled={busy}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Bot } from "lucide-react";
 import { api } from "@/lib/api";
 
 type RunEvent = { seq: number; stage: string; message: string; status: string };
@@ -16,22 +17,23 @@ async function fetchState(): Promise<State> {
   return current;
 }
 
-// Shows what the assistant is doing and the one question it is waiting on. All wording and every
-// decision comes from the backend; this component only collects the answer.
-export function WorkflowPanel({ refreshKey, onDone }: { refreshKey: number; onDone?: () => void }) {
+// The assistant's current turn in the conversation: its opening line, the one question it is
+// waiting on, or what it did with the last answer. All wording and every decision comes from the
+// backend; this component only collects the answer. `turn` counts messages sent this visit, so
+// the opening line and the last note step aside once the conversation moves on.
+export function WorkflowPanel({ refreshKey, turn, onDone }: { refreshKey: number; turn: number; onDone?: () => void }) {
   const [state, setState] = useState<State | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [fresh, setFresh] = useState(false);
+  const [noted, setNoted] = useState<{ turn: number; items: string[] }>({ turn: 0, items: [] });
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
   const [password, setPassword] = useState("");
 
   const show = useCallback((current: State) => {
     setState(current); setRun(current.run);
-    const shown = current.run ?? current.latest_run;
-    setFresh(Boolean(current.run) || (shown?.updated_at ? Date.now() - new Date(shown.updated_at).getTime() < 10 * 60 * 1000 : false));
+    if (current.run?.status === "waiting") setNoted(previous => ({ ...previous, items: [] }));
   }, []);
   useEffect(() => {
     fetchState().then(show).catch(reason => setError(reason instanceof Error ? reason.message : "The assistant could not load"));
@@ -41,11 +43,12 @@ export function WorkflowPanel({ refreshKey, onDone }: { refreshKey: number; onDo
     if (!run) return;
     setBusy(true);
     setError("");
+    const seen = Math.max(0, ...run.events.map(item => item.seq));
     try {
       const next = await api<Run>(`/workflow/runs/${run.id}/${path}`, { method: "POST", body: JSON.stringify(body) });
       setRun(next);
       setPassword("");
-      if (next.status !== "waiting") { show(await fetchState()); onDone?.(); }
+      if (next.status !== "waiting") { show(await fetchState()); setNoted({ turn, items: next.events.filter(item => item.seq > seen).map(item => item.message) }); onDone?.(); }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "That answer could not be saved");
     } finally {
@@ -53,16 +56,21 @@ export function WorkflowPanel({ refreshKey, onDone }: { refreshKey: number; onDo
     }
   }
 
-  const shown = run ?? state?.latest_run ?? null;
   const waiting = run?.status === "waiting" ? run.waiting_for : null;
   const submitPeriod = (event: FormEvent) => { event.preventDefault(); send("answer", { answer: "period", period_start: first, period_end: last }); };
   const answerGap = (choice: string) => waiting && send("answer", { answer: "gap", choice, account_id: waiting.account_id, gap_start: waiting.gap_start, gap_end: waiting.gap_end });
   const submitPassword = (event: FormEvent) => { event.preventDefault(); if (waiting?.import_id) send("password", { import_id: waiting.import_id, password }); };
 
   if (!state) return error ? <p className="records-error" role="alert">{error}</p> : null;
+  const greeting = turn === 0 ? state.greeting : "";
+  const notes = noted.turn === turn ? noted.items : [];
+  if (!greeting && !notes.length && !(waiting && run?.question) && !error) return null;
   return (
-    <section className="workflow-panel" aria-label="Assistant progress">
-      <p data-testid="greeting">{state.greeting}</p>
+    <article className="assistant-message assistant workflow-turn">
+      <span><Bot aria-hidden="true" /></span>
+      <section className="workflow-panel" aria-label="Assistant progress">
+      {greeting && <p data-testid="greeting">{greeting}</p>}
+      {notes.map((item, index) => <p key={index} role="status">{item}</p>)}
       {waiting && run?.question && (
         <div className="workflow-question" role="group" aria-label="The assistant needs an answer">
           <strong data-testid="question">{run.question}</strong>
@@ -88,14 +96,7 @@ export function WorkflowPanel({ refreshKey, onDone }: { refreshKey: number; onDo
         </div>
       )}
       {error && <p className="records-error" role="alert">{error}</p>}
-      {shown && shown.events.length > 0 && !shown.imports_confirmed && (
-        <details className="workflow-history" open={fresh}>
-          <summary>What I did ({shown.events.length} steps)</summary>
-          <ol className="workflow-events" aria-label="Progress">
-            {shown.events.map(item => <li key={item.seq} className={item.status}>{item.message}</li>)}
-          </ol>
-        </details>
-      )}
-    </section>
+      </section>
+    </article>
   );
 }

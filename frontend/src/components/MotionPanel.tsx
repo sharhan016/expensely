@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Bot } from "lucide-react";
 import { api, inr } from "@/lib/api";
 import { dateLabel } from "@/lib/ledger";
 
@@ -44,6 +45,8 @@ export function MotionPanel({ refreshKey }: { refreshKey: number }) {
   if (!questions.length && !passing.length && !proposals.length && !transfers.length && !loans.length && !state.outstanding.length && !state.remembered.length) return null;
 
   return (
+    <article className="assistant-message assistant workflow-turn">
+    <span><Bot aria-hidden="true" /></span>
     <section className="workflow-panel motion-panel" aria-label="Money you sent out">
       {passing.map(item => (
         <div className="workflow-question" role="group" aria-label="Money that may have passed through your account" key={item.outflow_id}>
@@ -128,5 +131,6 @@ export function MotionPanel({ refreshKey }: { refreshKey: number }) {
       )}
       {error && <p className="records-error" role="alert">{error}</p>}
     </section>
+    </article>
   );
 }

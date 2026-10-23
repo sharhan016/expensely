@@ -110,6 +110,12 @@ def test_private_assistant_summarizes_uploads_and_workspace_without_external_ai(
             assert "closing balance reconcile" in upload_reply.json()["content"]
             assert "1 meaning still unresolved" in upload_reply.json()["content"]
             assert upload_reply.json()["context"]["review_required"] is True
+            # Reads as a chat answer: headline, a findings list, then the next step.
+            lines = upload_reply.json()["content"].split("\n")
+            assert lines[0].startswith("I found a **YES current-account statement**")
+            assert "**What I found**" in lines
+            assert any(line.startswith("- Money moving out is **") for line in lines)
+            assert lines[-1].startswith("**Next:** review the statement")
 
             unresolved_reply = client.post(
                 "/assistant/turn", json={"message": "What is unresolved?"}

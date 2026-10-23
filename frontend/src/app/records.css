@@ -40,8 +40,9 @@
 .workflow-question label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
 .workflow-question input{min-height:44px;padding:0 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink)}
 .workflow-actions{display:grid;gap:8px}
-.workflow-events{margin:0;padding-left:18px;color:var(--muted)}
-.workflow-events .waiting{color:var(--ink);font-weight:600}
+.workflow-turn>.workflow-panel{width:100%;max-width:650px;margin:0;border-radius:4px 12px 12px}
+.assistant-text{display:grid;gap:8px;font-size:13px;line-height:1.58}.assistant-text p{margin:0}
+.assistant-text ul{display:grid;gap:5px;margin:0;padding-left:18px;list-style:disc}.assistant-text li::marker{color:var(--subtle)}.assistant-text strong{font-weight:600}
 @media(min-width:640px){.workflow-actions{grid-template-columns:1fr 1fr}.workflow-question form{grid-template-columns:1fr 1fr auto;align-items:end}}
 .report-form{display:grid;gap:10px;margin-bottom:16px}.report-form label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
 .report-form input{min-height:44px;padding:0 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink)}
@@ -60,5 +61,5 @@
 .investigation-card .claim-possible small{color:#8a5a00}.investigation-card .claim-close small{color:#8a5a00}.investigation-card .claim-question{font-weight:600}
 .motion-outstanding{margin:0;padding:0;list-style:none;display:grid;gap:8px}.motion-outstanding li{display:grid;gap:4px;padding-top:8px;border-top:1px solid var(--line)}
 .motion-remember{display:flex;align-items:center;gap:8px;min-height:44px;font-size:12px;color:var(--muted)}
+.workflow-question .motion-remember input{width:18px;height:18px;min-height:0;margin:0;padding:0;accent-color:var(--accent)}
 .workflow-question small{color:var(--muted);line-height:1.5}
-.workflow-history summary{cursor:pointer;color:var(--muted);font-size:12px;min-height:32px}

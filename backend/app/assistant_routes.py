@@ -56,7 +56,11 @@ def _date_label(iso: str | None) -> str:
 
 
 def _import_reply(statements: list[StatementImport]) -> tuple[str, dict]:
-    lines = []
+    """A chat answer per statement: what it is, what I found, and what happens next.
+
+    Lines starting "- " render as a list and **text** as emphasis in the assistant view.
+    """
+    blocks: list[str] = []
     needs_review = False
     reconciliation_results = []
     for statement in statements:
@@ -104,40 +108,57 @@ def _import_reply(statements: list[StatementImport]) -> tuple[str, dict]:
                     "This layout does not expose both balance endpoints, so its balance check "
                     "is still pending."
                 )
+            lines = [
+                f"I found a **{institution} {instrument}**{period} with "
+                f"**{transaction_count} transaction{'s' if transaction_count != 1 else ''}**. "
+                f"{reconciliation_copy}",
+                "",
+                "**What I found**",
+                f"- Money moving out is **{_money(outflow)}** and money moving in is "
+                f"**{_money(inflow)}**. I will not call either spending or income until the "
+                "purpose is known.",
+                f"- **{len(proposed)} new movement{'s' if len(proposed) != 1 else ''}** to add"
+                + (
+                    f", and **{duplicate_count} proven duplicate"
+                    f"{'s' if duplicate_count != 1 else ''}** I will skip."
+                    if duplicate_count
+                    else "; none of them repeat what is already in your ledger."
+                ),
+                (
+                    f"- **{unresolved_count} meaning{'s' if unresolved_count != 1 else ''} still "
+                    "unresolved**: I need you to tell me what "
+                    f"{'these were' if unresolved_count != 1 else 'this was'} for."
+                    if unresolved_count
+                    else "- Every new movement already has a purpose."
+                ),
+            ]
             flow_totals: dict[str, tuple[int, Decimal]] = {}
             for row in proposed:
                 if not row.counterparty_name:
                     continue
                 count, total = flow_totals.get(row.counterparty_name, (0, Decimal("0")))
                 flow_totals[row.counterparty_name] = (count + 1, total + abs(row.amount))
-            repeated = [
-                f"{name}: {count} movements totaling {_money(total)}"
-                for name, (count, total) in flow_totals.items()
-                if count > 1
-            ]
-            card_categories: dict[str, int] = {}
+            repeated = sorted(
+                ((name, count, total) for name, (count, total) in flow_totals.items() if count > 1),
+                key=lambda item: item[2],
+                reverse=True,
+            )
+            for name, count, total in repeated[:5]:
+                lines.append(
+                    f"- Repeated flow: **{name}**, {count} movements totaling {_money(total)}."
+                )
+            if len(repeated) > 5:
+                lines.append(f"- {len(repeated) - 5} more repeated flows are in the review.")
             if statement.statement_kind == "credit_card":
+                card_categories: dict[str, int] = {}
                 for row in proposed:
                     card_categories[row.category] = card_categories.get(row.category, 0) + 1
-            lines.append(
-                f"I found a {institution} {instrument}{period} with {transaction_count} "
-                f"transaction{'s' if transaction_count != 1 else ''}. {reconciliation_copy} "
-                f"Before posting, I see {len(proposed)} new movement"
-                f"{'s' if len(proposed) != 1 else ''}, {duplicate_count} proven duplicate"
-                f"{'s' if duplicate_count != 1 else ''}, and {unresolved_count} meaning"
-                f"{'s' if unresolved_count != 1 else ''} still unresolved. Money moving out is "
-                f"{_money(outflow)} and money moving in is {_money(inflow)}; I will not call "
-                "either spending or income until the purpose is known."
-            )
-            if repeated:
-                lines.append(f"Repeated flows found: {'; '.join(repeated)}.")
-            if card_categories:
-                category_copy = "; ".join(
-                    f"{count} {category.replace('_', ' ')}"
-                    for category, count in sorted(card_categories.items())
-                )
-                lines.append(f"Card activity identified: {category_copy}.")
-            if statement.statement_kind == "credit_card":
+                if card_categories:
+                    category_copy = ", ".join(
+                        f"{count} {category.replace('_', ' ')}"
+                        for category, count in sorted(card_categories.items())
+                    )
+                    lines.append(f"- Card activity identified: {category_copy}.")
                 card_amounts = []
                 if statement.total_amount_due is not None:
                     card_amounts.append(f"total due {_money(statement.total_amount_due)}")
@@ -149,24 +170,29 @@ def _import_reply(statements: list[StatementImport]) -> tuple[str, dict]:
                     card_amounts.append(f"statement balance {_money(statement.statement_balance)}")
                 if card_amounts:
                     lines.append(
-                        f"The card document reports {', '.join(card_amounts)}; these values are "
-                        "kept separate."
+                        f"- The card document reports {', '.join(card_amounts)}; these values "
+                        "are kept separate from your bank cash."
                     )
-            lines.append("It is ready for your review before I add it to the ledger.")
+            lines += [
+                "",
+                "**Next:** review the statement and confirm the rows you want. Nothing is added "
+                "to the ledger until you do.",
+            ]
+            blocks.append("\n".join(lines))
             reconciliation_results.append(
                 {"import_id": str(statement.id), "status": reconciliation}
             )
         elif statement.status == ImportStatus.PASSWORD_REQUIRED:
-            lines.append(
+            blocks.append(
                 f"{statement.original_filename} needs its PDF password before I can read it."
             )
         elif statement.status == ImportStatus.FAILED:
-            lines.append(
+            blocks.append(
                 f"I could not read {statement.original_filename}: {statement.error_message}"
             )
         else:
-            lines.append(f"{statement.original_filename} is currently {statement.status.value}.")
-    return "\n".join(lines), {
+            blocks.append(f"{statement.original_filename} is currently {statement.status.value}.")
+    return "\n\n".join(blocks), {
         "kind": "import_result",
         "import_ids": [str(statement.id) for statement in statements],
         "review_required": needs_review,
