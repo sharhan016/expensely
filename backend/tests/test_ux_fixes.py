@@ -220,3 +220,24 @@ def test_the_assistant_summarizes_a_statement_once_it_is_unlocked(workspace, tmp
     assert len(summaries) == 1
     assert "I found a" in summaries[0].content and "1 transaction" in summaries[0].content
     assert workspace.client.get(f"/workflow/runs/{run['id']}").json()["updated_at"]
+
+
+def test_a_finished_run_is_flagged_once_its_statements_are_confirmed(workspace):
+    account = workspace.account()
+    statement = workspace.stage(
+        [(date(2026, 3, 1), "SYNTH ROW", "-100.00", "")],
+        hint="1111",
+        opening="1000",
+        closing="900",
+        period=(date(2026, 2, 1), date(2026, 3, 1)),
+    )
+    workspace.client.put(
+        "/review-period", json={"period_start": "2026-01-01", "period_end": "2026-03-31"}
+    )
+    run = workspace.client.post("/workflow/runs", json={"import_ids": [str(statement.id)]}).json()
+    assert workspace.client.get(f"/workflow/runs/{run['id']}").json()["imports_confirmed"] is False
+
+    assert workspace.confirm(statement, account).status_code == 200
+
+    assert workspace.client.get(f"/workflow/runs/{run['id']}").json()["imports_confirmed"] is True
+    assert workspace.client.get("/workflow/state").json()["latest_run"]["imports_confirmed"] is True
