@@ -356,6 +356,7 @@ def test_aggregates_for_the_classification_review(real, capsys):
         "questions": len(state["questions"]),
         "questions_rows": sum(q["count"] for q in state["questions"]),
         "transfer_proposals": len(state["transfer_proposals"]),
+        "pass_through_proposals": [p["amount"] for p in state["pass_through_proposals"]],
         "cash_withdrawals": cash["withdrawal_count"],
         "rails": rails.most_common(8),
         "own_transfer_links": workspace.client.get("/transactions", params={"limit": 1}).json()[
