@@ -451,6 +451,15 @@ def question_text(db: Session, run: WorkflowRun) -> str | None:
     return None
 
 
+def _imports_confirmed(db: Session, run: WorkflowRun) -> bool:
+    """True when the run had statements and every one has since been confirmed to the ledger."""
+    if not run.import_ids:
+        return False
+    ids = [uuid.UUID(str(item)) for item in run.import_ids]
+    statuses = db.scalars(select(StatementImport.status).where(StatementImport.id.in_(ids))).all()
+    return len(statuses) == len(ids) and all(item == ImportStatus.CONFIRMED for item in statuses)
+
+
 def run_view(db: Session, run: WorkflowRun) -> dict:
     events = db.scalars(
         select(WorkflowEvent).where(WorkflowEvent.run_id == run.id).order_by(WorkflowEvent.seq)
@@ -461,6 +470,7 @@ def run_view(db: Session, run: WorkflowRun) -> dict:
         "status": run.status,
         "current_stage": run.current_stage,
         "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+        "imports_confirmed": _imports_confirmed(db, run),
         "waiting_for": run.waiting_for,
         "question": question_text(db, run),
         "events": [

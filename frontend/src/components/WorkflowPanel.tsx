@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
 type RunEvent = { seq: number; stage: string; message: string; status: string };
-type Run = { id: string; updated_at?: string | null; status: string; waiting_for: { type: string; import_id?: string; account_id?: number; gap_start?: string; gap_end?: string } | null; question: string | null; events: RunEvent[] };
+type Run = { id: string; updated_at?: string | null; imports_confirmed?: boolean; status: string; waiting_for: { type: string; import_id?: string; account_id?: number; gap_start?: string; gap_end?: string } | null; question: string | null; events: RunEvent[] };
 type State = { latest_run: Run | null; review_period: { period_start: string; period_end: string } | null; greeting: string; run: Run | null };
 
 async function fetchState(): Promise<State> {
@@ -88,7 +88,7 @@ export function WorkflowPanel({ refreshKey, onDone }: { refreshKey: number; onDo
         </div>
       )}
       {error && <p className="records-error" role="alert">{error}</p>}
-      {shown && shown.events.length > 0 && (
+      {shown && shown.events.length > 0 && !shown.imports_confirmed && (
         <details className="workflow-history" open={fresh}>
           <summary>What I did ({shown.events.length} steps)</summary>
           <ol className="workflow-events" aria-label="Progress">
